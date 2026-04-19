@@ -1,0 +1,12 @@
+# 与当前开发环境一致；部署时在服务器 venv 内 pip install -r requirements.txt
+asgiref==3.11.1
+cffi==2.0.0
+cryptography==46.0.7
+Django==6.0.4
+django-simpleui==2026.1.13
+gunicorn==23.0.0
+Markdown==3.10.2
+pillow==12.2.0
+pycparser==3.0
+PyMySQL==1.1.2
+sqlparse==0.5.5

@@ -92,10 +92,29 @@ TASK_PENDING_APPLICATION_TIMEOUT_MINUTES = int(
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=_n0^kny23gwp2c#w((viy8ceje73^5y=e#9=ql$-qr-571zmi'
+# 生产环境务必设置环境变量 SECRET_KEY（勿提交到仓库）
+SECRET_KEY = os.environ.get(
+    "SECRET_KEY",
+    "django-insecure-=_n0^kny23gwp2c#w((viy8ceje73^5y=e#9=ql$-qr-571zmi",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# 生产环境设置 DJANGO_DEBUG=0 或 false
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+DEBUG = _env_bool("DJANGO_DEBUG", True)
+
+# 使用 HTTPS 域名访问时必填，逗号分隔，例如：https://api.example.com
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 # 逗号分隔；用局域网 IP 访问后台时须包含该主机名，例如：ALLOWED_HOSTS=127.0.0.1,localhost,192.168.1.10
 ALLOWED_HOSTS = [
@@ -161,11 +180,11 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "my_base_db",
-        "USER": "root",
-        "PASSWORD": "fqf20fqf",
-        "HOST": "127.0.0.1",
-        "PORT": "3306",
+        "NAME": os.environ.get("MYSQL_DATABASE", "my_base_db"),
+        "USER": os.environ.get("MYSQL_USER", "root"),
+        "PASSWORD": os.environ.get("MYSQL_PASSWORD", "fqf20fqf"),
+        "HOST": os.environ.get("MYSQL_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("MYSQL_PORT", "3306"),
         "OPTIONS": {
             # 若后台保存报 1785（GTID consistency），多为 django_admin_log / django_session 仍是 MyISAM：
             # ALTER TABLE django_admin_log ENGINE=InnoDB;
@@ -230,7 +249,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
+# 生产环境执行 collectstatic 的输出目录（与 Nginx alias 指向一致）
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Media files (User uploaded files)
 MEDIA_URL = '/media/'
