@@ -1,0 +1,62 @@
+{% extends 'frontend/base.html' %}
+{% block title %}首页 - 我的平台{% endblock %}
+{% block page_content %}
+<div class="hero">
+    <div class="hero-left">
+        <h1>欢迎来到数字资产管理平台</h1>
+        <p>注册登录、钱包管理、质押收益、公告展示，一站式数字资产体验。</p>
+        <div class="hero-actions">
+            <a href="{% url 'frontend:register' %}" class="btn btn-primary">立即注册</a>
+            <a href="{% url 'frontend:login' %}" class="btn btn-ghost">登录</a>
+        </div>
+    </div>
+    <div class="hero-right">
+        <div class="carousel" id="announcement-carousel">
+            {% for announcement in announcements %}
+                <div class="carousel-item{% if forloop.first %} active{% endif %}">
+                    <h2>{{ announcement.title }}</h2>
+                    <p>{{ announcement.content|truncatechars:120 }}</p>
+                    <a href="{% url 'frontend:announcement_detail' announcement.pk %}">查看详情</a>
+                </div>
+            {% empty %}
+                <div class="carousel-item active">
+                    <h2>暂无公告</h2>
+                    <p>请稍后关注平台最新通知。</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<section class="section">
+    <h2>热门虚拟货币排行</h2>
+    <div class="coin-table-wrap">
+        <table class="coin-table" id="coin-table" data-coins='{{ coins_json|escapejs }}'>
+            <thead>
+                <tr><th>排名</th><th>币种</th><th>价格</th><th>涨跌</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section">
+    <h2>精选质押产品</h2>
+    <div class="product-grid">
+        {% for product in products %}
+            <div class="product-card">
+                {% if product.image %}
+                    <img src="{{ product.image.url }}" alt="{{ product.name }}">
+                {% endif %}
+                <h3>{{ product.name }}</h3>
+                <p>年化收益：{{ product.annual_rate }}%</p>
+                <p>最低质押：{{ product.min_amount }}</p>
+                <p>{{ product.description|truncatechars:100 }}</p>
+                <a href="{% url 'frontend:staking_list' %}" class="btn btn-primary">立即质押</a>
+            </div>
+        {% empty %}
+            <div>暂无可质押产品</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

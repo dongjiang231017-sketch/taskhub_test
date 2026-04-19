@@ -1,0 +1,198 @@
+/* 绑定账号弹窗（会员列表 / 任务报名 changelist） */
+
+.th-bind-modal-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid #c5d9e8;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #f8fbfe 0%, #eef6fc 100%);
+    color: #205067;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1.2;
+    max-width: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.th-bind-modal-trigger:hover {
+    border-color: #79aec8;
+    box-shadow: 0 1px 3px rgba(23, 99, 134, 0.12);
+    background: linear-gradient(180deg, #fff 0%, #f0f8fc 100%);
+}
+
+.th-bind-modal-trigger__icon {
+    display: flex;
+    color: #417690;
+    flex-shrink: 0;
+}
+
+.th-bind-modal-trigger__svg {
+    display: block;
+}
+
+.th-bind-modal-trigger__label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 11rem;
+}
+
+#th-binding-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100020;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+#th-binding-modal[hidden] {
+    display: none !important;
+}
+
+.th-binding-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: rgba(15, 30, 45, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.th-binding-modal__panel {
+    position: relative;
+    z-index: 1;
+    width: min(420px, 100%);
+    max-height: min(72vh, 520px);
+    overflow: auto;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    animation: th-bind-pop 0.2s ease-out;
+}
+
+@keyframes th-bind-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.th-binding-modal__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 1.1rem 0.75rem;
+    border-bottom: 1px solid #e8eef2;
+}
+
+.th-binding-modal__head-icon {
+    display: flex;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #e8f4fa 0%, #d4e9f5 100%);
+    color: #205067;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.th-binding-modal__title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1a2b36;
+    letter-spacing: 0.02em;
+}
+
+.th-binding-modal__close {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #6a7a85;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.th-binding-modal__close:hover {
+    background: #f0f4f7;
+    color: #333;
+}
+
+.th-binding-modal__body {
+    padding: 0.85rem 1.1rem 1.15rem;
+}
+
+.th-binding-card {
+    border: 1px solid #e4edf3;
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem;
+    margin-bottom: 0.65rem;
+    background: #fafcfd;
+}
+
+.th-binding-card:last-child {
+    margin-bottom: 0;
+}
+
+.th-binding-card__platform {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #417690;
+    background: #e8f2f8;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    margin-bottom: 0.45rem;
+}
+
+.th-binding-row {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #2c3e50;
+}
+
+.th-binding-row + .th-binding-row {
+    margin-top: 0.35rem;
+}
+
+.th-bind-k {
+    color: #5a6b78;
+    font-weight: 600;
+    margin-right: 0.25rem;
+}
+
+.th-bind-v {
+    font-weight: 600;
+    color: #1a2b36;
+    word-break: break-all;
+}
+
+.th-bind-v code {
+    font-size: 12.5px;
+    background: #fff;
+    border: 1px solid #dce6ed;
+    padding: 0.12rem 0.35rem;
+    border-radius: 4px;
+}

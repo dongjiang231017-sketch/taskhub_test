@@ -1,0 +1,6 @@
+/* 公告后台：Flatpickr 单框时间，避免默认 Admin 双框过窄 */
+input.announcements-dtp {
+    min-width: 11rem;
+    max-width: 100%;
+    padding: 0.35rem 0.5rem;
+}

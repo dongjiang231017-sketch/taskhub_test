@@ -1,0 +1,13 @@
+{% extends 'frontend/base.html' %}
+{% block title %}{{ announcement.title }} - 公告详情{% endblock %}
+{% block page_content %}
+<div class="section">
+    <h2>{{ announcement.title }}</h2>
+    <p class="meta">发布日期：{{ announcement.publish_at|date:'Y-m-d H:i' }}</p>
+    {% if announcement.cover %}
+        <img class="announcement-cover" src="{{ announcement.cover.url }}" alt="{{ announcement.title }}">
+    {% endif %}
+    <div class="announcement-content">{{ announcement.content|safe }}</div>
+    <p><a href="{% url 'frontend:announcements' %}">返回公告列表</a></p>
+</div>
+{% endblock %}

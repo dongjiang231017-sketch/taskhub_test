@@ -1,0 +1,113 @@
+/* 会员列表（FrontendUser）与任务报名列表：列宽与折叠查看 */
+
+body.model-frontenduser.change-list #changelist #result_list,
+body.model-taskapplication.change-list #changelist #result_list {
+    table-layout: fixed;
+    width: 100%;
+}
+
+body.model-frontenduser.change-list #result_list th,
+body.model-frontenduser.change-list #result_list td {
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.model-frontenduser.change-list #result_list .column-id {
+    width: 3.5rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-display_phone {
+    width: 7rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-username {
+    width: 8rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-telegram_id {
+    width: 6rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-membership_level {
+    width: 4.5rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-task_binding_accounts,
+body.model-frontenduser.change-list #result_list .field-task_binding_accounts {
+    width: 4.5rem;
+    white-space: normal;
+}
+
+body.model-frontenduser.change-list #result_list .column-wallet_balance,
+body.model-frontenduser.change-list #result_list .column-wallet_frozen {
+    width: 5rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-invite_code {
+    width: 6rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-referrer {
+    width: 5rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-status {
+    width: 3.5rem;
+}
+
+body.model-frontenduser.change-list #result_list .column-created_at {
+    width: 9rem;
+}
+
+body.model-frontenduser.change-list td.field-task_binding_accounts,
+body.model-taskapplication.change-list td.field-bound_username_preview {
+    white-space: normal;
+}
+
+body.model-taskapplication.change-list #result_list th,
+body.model-taskapplication.change-list #result_list td {
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.model-taskapplication.change-list #result_list .column-id {
+    width: 3.5rem;
+}
+
+body.model-taskapplication.change-list #result_list .column-task,
+body.model-taskapplication.change-list #result_list .field-task {
+    width: 14%;
+    white-space: normal;
+}
+
+body.model-taskapplication.change-list #result_list .column-applicant {
+    width: 8%;
+}
+
+body.model-taskapplication.change-list #result_list .column-bound_username_preview,
+body.model-taskapplication.change-list #result_list .field-bound_username_preview {
+    width: 4.5rem;
+    white-space: normal;
+}
+
+body.model-taskapplication.change-list #result_list .column-has_proof {
+    width: 4rem;
+}
+
+body.model-taskapplication.change-list #result_list .column-quoted_price {
+    width: 5rem;
+}
+
+body.model-taskapplication.change-list #result_list .column-status {
+    width: 5rem;
+}
+
+body.model-taskapplication.change-list #result_list .column-self_verified_at,
+body.model-taskapplication.change-list #result_list .column-created_at,
+body.model-taskapplication.change-list #result_list .column-decided_at {
+    width: 8.5rem;
+}

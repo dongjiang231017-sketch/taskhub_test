@@ -1,0 +1,45 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}前端系统{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'frontend/css/style.css' %}">
+</head>
+<body class="{{ body_class|default:'' }}">
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="logo" href="{% url 'frontend:home' %}">绿牛平台</a>
+        <nav class="site-nav">
+            <a href="{% url 'frontend:home' %}">首页</a>
+            <a href="{% url 'frontend:announcements' %}">公告</a>
+            <a href="{% url 'frontend:staking_list' %}">质押</a>
+            {% if current_user %}
+                <a href="{% url 'frontend:wallet' %}">钱包</a>
+                <a href="{% url 'frontend:stake_records' %}">质押记录</a>
+                <a href="{% url 'frontend:release_records' %}">释放记录</a>
+                <a href="{% url 'frontend:profile' %}">个人资料</a>
+                <a href="{% url 'frontend:logout' %}" class="btn btn-ghost">退出</a>
+            {% else %}
+                <a href="{% url 'frontend:login' %}">登录</a>
+                <a href="{% url 'frontend:register' %}" class="btn btn-primary">注册</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+{% if body_class == 'login-layout' %}
+    {% block login_content %}{% endblock %}
+{% else %}
+    <main class="page-container">
+        <div class="page-card">
+            {% block page_content %}{% endblock %}
+        </div>
+    </main>
+    <footer class="site-footer">
+        <div class="container">&copy; 2026 绿牛平台</div>
+    </footer>
+{% endif %}
+<script src="{% static 'frontend/js/main.js' %}"></script>
+</body>
+</html>

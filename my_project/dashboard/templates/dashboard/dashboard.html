@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制台</title>
+    <style>
+        body {font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f6f9;}
+        .container {width: 100%; max-width: 1240px; margin: 20px auto; padding: 0 16px;}
+        .card-row {display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;}
+        .card {flex: 1 1 calc(25% - 16px); min-width: 220px; background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 12px rgba(0,0,0,.08);}
+        .card h3 {margin: 0 0 12px; font-size: 14px; color: #666;}
+        .card .value {font-size: 32px; font-weight: 700; color: #2f4050;}
+        .chart-card {background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 15px rgba(0,0,0,.08); margin-bottom: 24px;}
+        .chart-title {font-size: 16px; margin-bottom: 12px; color: #333;}
+        .chart-box {width: 100%; height: 360px;}
+        .summary-row {display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;}
+        .summary-block {flex: 1 1 calc(33.333% - 16px); min-width: 220px; background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 15px rgba(0,0,0,.08);}
+        .summary-block h4 {margin: 0 0 10px; font-size: 14px; color: #666;}
+        .summary-block .num {font-size: 28px; font-weight: 700; color: #1f78d4;}
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="card-row">
+            <div class="card">
+                <h3>今日注册人数</h3>
+                <div class="value">{{ registrations|last }}</div>
+            </div>
+            <div class="card">
+                <h3>总会员人数</h3>
+                <div class="value">{{ total_members }}</div>
+            </div>
+            <div class="card">
+                <h3>今日质押金额</h3>
+                <div class="value">{{ today_staking_amount }}</div>
+            </div>
+            <div class="card">
+                <h3>今日释放金额</h3>
+                <div class="value">{{ today_release_amount }}</div>
+            </div>
+        </div>
+
+        <div class="summary-row">
+            <div class="summary-block">
+                <h4>总质押金额</h4>
+                <div class="num">{{ total_staking_amount }}</div>
+            </div>
+            <div class="summary-block">
+                <h4>当前活跃质押数</h4>
+                <div class="num">{{ active_stake_count }}</div>
+            </div>
+            <div class="summary-block">
+                <h4>累计会员</h4>
+                <div class="num">{{ total_members }}</div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">最近14天注册趋势</div>
+            <div id="chart-registrations" class="chart-box"></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">最近14天累计会员趋势</div>
+            <div id="chart-cumulative" class="chart-box"></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">最近14天每日质押金额</div>
+            <div id="chart-staking" class="chart-box"></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">最近14天每日释放金额</div>
+            <div id="chart-release" class="chart-box"></div>
+        </div>
+    </div>
+
+    <script>
+        var labels = {{ day_labels|safe }};
+        var registrations = {{ registrations|safe }};
+        var cumulative = {{ cumulative_members|safe }};
+        var stakingAmounts = {{ staking_amounts|safe }};
+        var releaseAmounts = {{ release_amounts|safe }};
+
+        function initChart(id, title, seriesName, data) {
+            var chart = echarts.init(document.getElementById(id));
+            var option = {
+                tooltip: {trigger: 'axis'},
+                xAxis: {type: 'category', data: labels, boundaryGap: false},
+                yAxis: {type: 'value'},
+                grid: {left: '6%', right: '4%', bottom: '10%', containLabel: true},
+                series: [{
+                    name: seriesName,
+                    type: 'line',
+                    smooth: true,
+                    areaStyle: {color: 'rgba(31, 120, 212, 0.15)'},
+                    lineStyle: {width: 3, color: '#1f78d4'},
+                    itemStyle: {color: '#1f78d4'},
+                    data: data
+                }]
+            };
+            chart.setOption(option);
+        }
+
+        initChart('chart-registrations', '注册趋势', '注册人数', registrations);
+        initChart('chart-cumulative', '累计会员趋势', '会员总数', cumulative);
+        initChart('chart-staking', '质押金额趋势', '质押金额', stakingAmounts);
+        initChart('chart-release', '释放金额趋势', '释放金额', releaseAmounts);
+    </script>
+</body>
+</html>

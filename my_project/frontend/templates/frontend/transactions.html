@@ -1,0 +1,26 @@
+{% extends 'frontend/base.html' %}
+{% block title %}余额明细 - 我的平台{% endblock %}
+{% block page_content %}
+<div class="section">
+    <h2>余额变动明细</h2>
+    <table class="record-table">
+        <thead>
+            <tr><th>时间</th><th>变动类型</th><th>金额</th><th>变动前</th><th>变动后</th><th>备注</th></tr>
+        </thead>
+        <tbody>
+            {% for record in transactions %}
+                <tr>
+                    <td>{{ record.created_at|date:'Y-m-d H:i' }}</td>
+                    <td>{{ record.get_change_type_display }}</td>
+                    <td>{{ record.amount }}</td>
+                    <td>{{ record.before_balance }}</td>
+                    <td>{{ record.after_balance }}</td>
+                    <td>{{ record.remark }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6">暂无明细记录</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

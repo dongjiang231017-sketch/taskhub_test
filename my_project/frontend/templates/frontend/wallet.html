@@ -1,0 +1,18 @@
+{% extends 'frontend/base.html' %}
+{% block title %}钱包余额 - 我的平台{% endblock %}
+{% block page_content %}
+<div class="section">
+    <h2>钱包余额</h2>
+    <div class="wallet-summary">
+        <div class="wallet-card">
+            <h3>USDT</h3>
+            <p>{{ wallet.balance }}</p>
+        </div>
+        <div class="wallet-card">
+            <h3>TH Coin</h3>
+            <p>{{ wallet.frozen }}</p>
+        </div>
+    </div>
+    <p>更新时间：{{ wallet.user.created_at|date:'Y-m-d H:i' }}</p>
+</div>
+{% endblock %}

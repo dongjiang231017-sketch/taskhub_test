@@ -1,0 +1,499 @@
+"""
+个人中心：聚合页、收益账本、提现申请/记录、账号绑定列表。
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import re
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.conf import settings
+from django.db import transaction
+from django.db.models import Count, Sum
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
+from users.models import FrontendUser
+from wallets.models import Transaction, Wallet, WithdrawalRequest
+
+from .api_views import (
+    api_error,
+    api_response,
+    binding_verify_action,
+    parse_json_body,
+    parse_positive_int,
+    require_api_login,
+    serialize_user,
+)
+from .miniapp_api import _check_in_week_payload, _stats_for_user
+from .models import Task, TaskApplication
+
+_MONEY_QUANT = Decimal("0.01")
+_LEVEL_EXP_CAP = 5
+
+_LEDGER_LABELS = {
+    "task_reward": "任务奖励",
+    "reward": "推荐奖励",
+    "check_in": "每日签到",
+    "check_in_makeup": "补签奖励",
+    "check_in_makeup_cost": "补签消耗",
+    "cost": "消费",
+    "withdraw": "提现",
+    "recharge": "充值",
+    "adjust": "调账",
+    "admin_adjust": "后台拨币",
+}
+
+_LEDGER_EXCLUDE_TYPES = frozenset({"admin_adjust", "recharge", "withdraw"})
+
+_PLATFORM_ORDER = (
+    Task.BINDING_TWITTER,
+    Task.BINDING_YOUTUBE,
+    Task.BINDING_INSTAGRAM,
+    Task.BINDING_TIKTOK,
+    Task.BINDING_FACEBOOK,
+    Task.BINDING_TELEGRAM,
+)
+
+_PLATFORM_LABELS = dict(Task.BINDING_PLATFORM_CHOICES)
+
+
+def _is_th_transaction(tx: Transaction) -> bool:
+    return "th coin" in (tx.remark or "").lower()
+
+
+def _tx_asset(tx: Transaction) -> str:
+    return "th_coin" if _is_th_transaction(tx) else "usdt"
+
+
+def _format_amount_for_display(tx: Transaction) -> str:
+    a = tx.amount.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    sign = "+" if a >= 0 else ""
+    return f"{sign}{a}"
+
+
+def _ledger_label(tx: Transaction) -> str:
+    return _LEDGER_LABELS.get(tx.change_type, tx.get_change_type_display())
+
+
+def _rank_position(user: FrontendUser, completed_tasks: int) -> int:
+    """按「已录用任务数」排名：人数严格多于当前用户 completed_tasks 的用户数 + 1。"""
+    higher = (
+        TaskApplication.objects.filter(status=TaskApplication.STATUS_ACCEPTED)
+        .values("applicant_id")
+        .annotate(n=Count("id"))
+        .filter(n__gt=completed_tasks)
+        .count()
+    )
+    return higher + 1
+
+
+def _level_block(user: FrontendUser, completed_tasks: int) -> dict:
+    tier = max(1, int(user.membership_level or 1))
+    exp_current = completed_tasks % (_LEVEL_EXP_CAP + 1)
+    pct = int(exp_current * 100 / _LEVEL_EXP_CAP) if _LEVEL_EXP_CAP else 0
+    return {
+        "tier": tier,
+        "tier_label": f"Lv.{tier}",
+        "title": "新手玩家",
+        "exp_current": exp_current,
+        "exp_next": _LEVEL_EXP_CAP,
+        "progress_percent": min(100, pct),
+        "hint": "完成任务可提升等级与经验（示例规则，可后续接入独立经验表）",
+    }
+
+
+def _recent_reward_items(wallet: Wallet, *, limit: int = 8) -> list[dict]:
+    qs = _ledger_queryset(wallet, asset=None, days=None)[:limit]
+    return [_serialize_ledger_row(tx) for tx in qs]
+
+
+def _serialize_ledger_row(tx: Transaction) -> dict:
+    asset = _tx_asset(tx)
+    return {
+        "id": tx.id,
+        "asset": asset,
+        "amount": str(tx.amount.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)),
+        "amount_display": _format_amount_for_display(tx),
+        "change_type": tx.change_type,
+        "label": _ledger_label(tx),
+        "remark": tx.remark or "",
+        "created_at": tx.created_at.isoformat(),
+    }
+
+
+def _valid_bep20_address(addr: str) -> bool:
+    s = addr.strip()
+    if s.startswith("0x"):
+        s = s[2:]
+    return len(s) == 40 and re.fullmatch(r"[0-9a-fA-F]{40}", s) is not None
+
+
+def _ledger_queryset(wallet: Wallet, *, asset: str | None, days: int | None):
+    qs = Transaction.objects.filter(wallet=wallet).exclude(change_type__in=_LEDGER_EXCLUDE_TYPES)
+    if asset == "usdt":
+        qs = qs.exclude(remark__icontains="TH Coin")
+    elif asset == "th_coin":
+        qs = qs.filter(remark__icontains="TH Coin")
+    if days is not None and days > 0:
+        since = timezone.now() - dt.timedelta(days=days)
+        qs = qs.filter(created_at__gte=since)
+    return qs.order_by("-created_at")
+
+
+def _ledger_summary_all_time(wallet: Wallet) -> tuple[Decimal, Decimal]:
+    base = Transaction.objects.filter(wallet=wallet).exclude(change_type__in=_LEDGER_EXCLUDE_TYPES)
+    usdt_sum = base.filter(amount__gt=0).exclude(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+    th_sum = base.filter(amount__gt=0, remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+
+    def _d(v) -> Decimal:
+        if v is None:
+            return Decimal("0.00")
+        return Decimal(v).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+    return _d(usdt_sum), _d(th_sum)
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET"])
+def me_center_api(request):
+    """
+    个人中心主界面：在 me/home 基础上增加等级/排名、最近收益、提现规则、外链。
+    """
+    user = request.api_user
+    stats = _stats_for_user(user)
+    completed = int(stats["completed_tasks_count"])
+    rank = _rank_position(user, completed)
+    Wallet.objects.get_or_create(user=user)
+    wallet = Wallet.objects.get(user=user)
+
+    fee = getattr(settings, "WITHDRAW_FEE_USDT", Decimal("0.00"))
+    min_u = getattr(settings, "WITHDRAW_MIN_USDT", Decimal("2.00"))
+    tg_url = getattr(settings, "TELEGRAM_COMMUNITY_URL", "") or ""
+
+    data = {
+        "user": serialize_user(user),
+        "wallet": {"usdt": stats["usdt_balance"], "th_coin": stats["th_coin_balance"]},
+        "stats": {
+            "cumulative_earnings_usdt": stats["cumulative_earnings_usdt"],
+            "cumulative_earnings_th_coin": stats["cumulative_earnings_th_coin"],
+            "completed_tasks_count": completed,
+        },
+        "level": _level_block(user, completed),
+        "rank": {"position": rank, "label": f"全站第 {rank} 名"},
+        "recent_rewards": _recent_reward_items(wallet, limit=8),
+        "links": {
+            "telegram_community": tg_url or None,
+        },
+        "withdraw": {
+            "min_amount_usdt": str(min_u.quantize(_MONEY_QUANT)),
+            "fee_usdt": str(fee.quantize(_MONEY_QUANT)),
+            "chain_default": "BEP20",
+            "estimated_arrival_hint": "1–3 个工作日（链上确认后到账）",
+        },
+        "check_in": _check_in_week_payload(user),
+    }
+    return api_response(data)
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET"])
+def me_rewards_ledger_api(request):
+    """收益/账单明细（钱包账变，不含后台拨币与充值；提现见 me/withdrawals）。"""
+    user = request.api_user
+    Wallet.objects.get_or_create(user=user)
+    wallet = Wallet.objects.get(user=user)
+
+    try:
+        page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
+        page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    page_size = min(page_size, 50)
+    asset = (request.GET.get("asset") or "all").strip().lower()
+    if asset not in ("all", "usdt", "th_coin"):
+        return api_error("asset 须为 all / usdt / th_coin", code=4001, status=400)
+
+    raw_days = request.GET.get("days")
+    days: int | None
+    if raw_days in (None, ""):
+        days = None
+    else:
+        try:
+            days = int(raw_days)
+        except (TypeError, ValueError):
+            return api_error("days 须为整数", code=4001, status=400)
+        if days < 0:
+            return api_error("days 不能为负", code=4001, status=400)
+
+    qs = _ledger_queryset(wallet, asset=asset if asset != "all" else None, days=days)
+    total = qs.count()
+    offset = (page - 1) * page_size
+    rows = list(qs[offset : offset + page_size])
+
+    total_usdt, total_th = _ledger_summary_all_time(wallet)
+
+    return api_response(
+        {
+            "summary": {
+                "total_usdt": str(total_usdt),
+                "total_th_coin": str(total_th),
+            },
+            "items": [_serialize_ledger_row(tx) for tx in rows],
+            "pagination": {"page": page, "page_size": page_size, "total": total},
+        }
+    )
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET", "POST"])
+def me_withdrawals_api(request):
+    """提现记录 GET；发起提现 POST（扣 USDT、生成处理中单）。"""
+    user = request.api_user
+    Wallet.objects.get_or_create(user=user)
+
+    if request.method == "GET":
+        try:
+            page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
+            page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
+        except ValueError as exc:
+            return api_error(str(exc), code=4001, status=400)
+
+        page_size = min(page_size, 50)
+        raw_days = request.GET.get("days", "30")
+        try:
+            days = int(raw_days)
+        except (TypeError, ValueError):
+            return api_error("days 须为整数", code=4001, status=400)
+        if days < 0:
+            return api_error("days 不能为负", code=4001, status=400)
+
+        since = timezone.now() - dt.timedelta(days=days) if days > 0 else None
+        base = WithdrawalRequest.objects.filter(user=user)
+        if since:
+            base = base.filter(created_at__gte=since)
+
+        completed_sum = (
+            WithdrawalRequest.objects.filter(user=user, status=WithdrawalRequest.STATUS_COMPLETED)
+            .aggregate(s=Sum("amount"))["s"]
+        )
+        total_withdrawn = Decimal(completed_sum or 0).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+        pending_count = WithdrawalRequest.objects.filter(
+            user=user,
+            status=WithdrawalRequest.STATUS_PROCESSING,
+        ).count()
+
+        total = base.count()
+        offset = (page - 1) * page_size
+        items = list(base.order_by("-created_at")[offset : offset + page_size])
+
+        def _one(w: WithdrawalRequest) -> dict:
+            return {
+                "id": w.id,
+                "amount": str(w.amount.quantize(_MONEY_QUANT)),
+                "fee": str(w.fee.quantize(_MONEY_QUANT)),
+                "net_amount": str(w.net_amount),
+                "chain": w.chain,
+                "to_address": w.to_address,
+                "status": w.status,
+                "reject_reason": w.reject_reason or None,
+                "created_at": w.created_at.isoformat(),
+                "updated_at": w.updated_at.isoformat(),
+            }
+
+        return api_response(
+            {
+                "summary": {
+                    "total_withdrawn_usdt": str(total_withdrawn),
+                    "pending_count": pending_count,
+                    "window_days": days,
+                },
+                "items": [_one(w) for w in items],
+                "pagination": {"page": page, "page_size": page_size, "total": total},
+            }
+        )
+
+    # POST
+    try:
+        body = parse_json_body(request)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    raw_amt = body.get("amount")
+    to_addr = (body.get("to_address") or body.get("address") or "").strip()
+    chain = (body.get("chain") or "BEP20").strip() or "BEP20"
+
+    try:
+        gross = Decimal(str(raw_amt)).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    except Exception:
+        return api_error("amount 须为数字", code=4081, status=400)
+
+    fee = getattr(settings, "WITHDRAW_FEE_USDT", Decimal("0.00")).quantize(
+        _MONEY_QUANT, rounding=ROUND_HALF_UP
+    )
+    min_u = getattr(settings, "WITHDRAW_MIN_USDT", Decimal("2.00")).quantize(
+        _MONEY_QUANT, rounding=ROUND_HALF_UP
+    )
+
+    if gross < min_u:
+        return api_error(f"提现金额不能低于 {min_u} USDT", code=4082, status=400)
+
+    net = (gross - fee).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    if net <= Decimal("0.00"):
+        return api_error("扣除手续费后到账金额须大于 0", code=4083, status=400)
+
+    if not _valid_bep20_address(to_addr):
+        return api_error("收款地址格式无效（BEP20 须为 42 位 0x 或 40 位 hex）", code=4084, status=400)
+
+    with transaction.atomic():
+        w = Wallet.objects.select_for_update().get(user=user)
+        if w.balance < gross:
+            return api_error("USDT 余额不足", code=4080, status=400)
+
+        old_b = w.balance
+        new_b = (old_b - gross).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+        tx_row = Transaction.objects.create(
+            wallet=w,
+            amount=-gross,
+            before_balance=old_b,
+            after_balance=new_b,
+            change_type="withdraw",
+            remark=f"提现 {chain} → {to_addr[:10]}…{to_addr[-6:]}",
+        )
+        w.balance = new_b
+        w.save(create_transaction=False)
+
+        req = WithdrawalRequest.objects.create(
+            user=user,
+            amount=gross,
+            fee=fee,
+            chain=chain,
+            to_address=to_addr,
+            status=WithdrawalRequest.STATUS_PROCESSING,
+            debit_transaction=tx_row,
+        )
+
+    return api_response(
+        {
+            "withdrawal": {
+                "id": req.id,
+                "amount": str(req.amount),
+                "fee": str(req.fee),
+                "net_amount": str(req.net_amount),
+                "chain": req.chain,
+                "to_address": req.to_address,
+                "status": req.status,
+                "created_at": req.created_at.isoformat(),
+            }
+        },
+        message="提现申请已提交",
+    )
+
+
+def _open_mandatory_binding_task(platform: str) -> Task | None:
+    return (
+        Task.objects.filter(
+            interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+            binding_platform=platform,
+            status=Task.STATUS_OPEN,
+            is_mandatory=True,
+        )
+        .order_by("-task_list_order", "-id")
+        .first()
+    )
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET"])
+def me_bound_accounts_api(request):
+    """各平台账号绑定状态：来自已录用报名 + 当前开放必做绑定任务。"""
+    user = request.api_user
+
+    rows = []
+    for platform in _PLATFORM_ORDER:
+        app = (
+            TaskApplication.objects.filter(
+                applicant=user,
+                status=TaskApplication.STATUS_ACCEPTED,
+                task__interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+                task__binding_platform=platform,
+            )
+            .select_related("task")
+            .order_by("-decided_at", "-created_at")
+            .first()
+        )
+        open_task = _open_mandatory_binding_task(platform)
+        linked = app is not None
+        display_name = None
+        if app and app.bound_username:
+            display_name = app.bound_username.strip()
+        elif linked:
+            display_name = user.username
+
+        reward_hint = None
+        if open_task and (open_task.reward_th_coin or Decimal("0")) > Decimal("0"):
+            reward_hint = f"+{open_task.reward_th_coin.normalize()} TH"
+        elif open_task and (open_task.reward_usdt or Decimal("0")) > Decimal("0"):
+            reward_hint = f"+{open_task.reward_usdt.normalize()} USDT"
+
+        verify_suffix = binding_verify_action(open_task) if open_task else None
+
+        rows.append(
+            {
+                "platform": platform,
+                "platform_label": _PLATFORM_LABELS.get(platform, platform),
+                "linked": linked,
+                "display_name": display_name,
+                "bound_username": (app.bound_username if app else None) or None,
+                "reward_hint": reward_hint,
+                "task": (
+                    {
+                        "id": open_task.id,
+                        "title": open_task.title,
+                        "reward_usdt": str(open_task.reward_usdt),
+                        "reward_th_coin": str(open_task.reward_th_coin),
+                        "verify_path_suffix": verify_suffix,
+                    }
+                    if open_task
+                    else None
+                ),
+            }
+        )
+
+    return api_response({"items": rows})
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET", "PATCH"])
+def me_notification_settings_api(request):
+    """通知设置占位：后续可落库 FrontendUser 字段。"""
+    if request.method == "GET":
+        return api_response(
+            {
+                "push_enabled": True,
+                "task_reminder": True,
+                "withdrawal_notice": True,
+            }
+        )
+    try:
+        body = parse_json_body(request)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    return api_response(
+        {
+            "push_enabled": bool(body.get("push_enabled", True)),
+            "task_reminder": bool(body.get("task_reminder", True)),
+            "withdrawal_notice": bool(body.get("withdrawal_notice", True)),
+        },
+        message="已保存（当前为占位，未持久化）",
+    )

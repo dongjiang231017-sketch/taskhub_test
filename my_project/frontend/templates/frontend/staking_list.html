@@ -1,0 +1,35 @@
+{% extends 'frontend/base.html' %}
+{% block title %}质押产品 - 我的平台{% endblock %}
+{% block page_content %}
+<div class="section">
+    <h2>质押产品</h2>
+    <div class="product-grid">
+        {% for product in products %}
+            <div class="product-card">
+                {% if product.image %}
+                    <img src="{{ product.image.url }}" alt="{{ product.name }}">
+                {% endif %}
+                <h3>{{ product.name }}</h3>
+                <p>年化收益：{{ product.annual_rate }}%</p>
+                <p>最低质押：{{ product.min_amount }}</p>
+                {% if product.max_amount %}
+                    <p>最高质押：{{ product.max_amount }}</p>
+                {% endif %}
+                <p>{{ product.description|truncatechars:120 }}</p>
+                <form method="post" action="{% url 'frontend:stake_create' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="product_id" value="{{ product.pk }}">
+                    <label>质押金额</label>
+                    <input type="number" name="amount" step="0.01" min="0.01" placeholder="请输入金额">
+                    <button type="submit" class="btn btn-primary">参与质押</button>
+                </form>
+            </div>
+        {% empty %}
+            <p>当前没有可质押产品。</p>
+        {% endfor %}
+    </div>
+    {% if form.errors %}
+        <div class="form-error">{{ form.errors }}</div>
+    {% endif %}
+</div>
+{% endblock %}
