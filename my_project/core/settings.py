@@ -17,6 +17,14 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# 项目根目录下的 .env 自动加载（与 manage.py 同级；已存在的环境变量不会被覆盖）
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR / ".env")
+except ImportError:
+    pass
+
 # 任务默认发布人（FrontendUser.id）：后台与 POST /api/v1/tasks/ 均自动用该用户，无需再选手动发布人
 TASK_PLATFORM_PUBLISHER_ID = int(os.environ.get("TASK_PLATFORM_PUBLISHER_ID", "1"))
 
