@@ -21,6 +21,18 @@
 Authorization: Bearer <token>
 ```
 
+### 1.1 哪些接口必须带 Bearer（前端核对）
+
+| 类型 | 路径前缀或示例 | 是否需 Bearer |
+| --- | --- | --- |
+| 健康与文档 | `GET /api/v1/health/`、`GET /api/v1/docs/` | 否 |
+| 注册 / 手机号登录 | `POST /api/v1/auth/register/`、`POST /api/v1/auth/login/` | 否 |
+| **Telegram 登录** | `POST /api/v1/auth/telegram/` 及 **§2.5** 所列兼容路径 | **否**（POST 登录时） |
+| 分类 / 任务列表等 | 见各章节标注「可不登录」的接口 | 按文档 |
+| **个人中心 / 签到 / 我的任务等** | `GET/POST /api/v1/me/...` | **是**（除登录外几乎全部要） |
+
+未带或 token 错误时：**HTTP 401**，`code` 多为 **4010**，`message` 一般为「未登录或 token 无效」。服务端日志里可能出现 **`Unauthorized: /api/v1/me/center/`** 字样，**属于预期**，不是接口缺失；请在前端确认请求头里已拼上 **`Authorization: Bearer ` + 登录接口返回的 `data.token`**。
+
 ## 2. 认证相关
 
 ### 2.1 注册
@@ -118,6 +130,21 @@ Authorization: Bearer <token>
   }
 }
 ```
+
+#### 2.5.1 前端联调核对（Telegram 里已能取到用户信息时）
+
+Mini App / Telegram 客户端里通过 **`Telegram.WebApp`** 取到的 **`user`（id、username 等）只表示在 Telegram 侧的身份**，**不能**代替本后端的登录态。
+
+| 步骤 | 前端应做的事 |
+| --- | --- |
+| 1 | 取 **`Telegram.WebApp.initData`** 的**完整字符串**（不要自己拼 query、不要只传 user JSON）。 |
+| 2 | **`POST`** 登录接口（任选 **§2.5** 中一条 URL），`Content-Type: application/json`，body：`{"init_data":"..."}` 或 `{"initData":"..."}`。 |
+| 3 | 解析响应 JSON：若 **`code === 0`**，取出 **`data.token`** 持久化（内存 / localStorage / 全局 store 等，按你们安全策略）。 |
+| 4 | 之后请求 **`/api/v1/me/home/`、`/api/v1/me/center/`** 等：每个请求 Header 增加 **`Authorization: Bearer <data.token>`**（注意 **`Bearer` 后有一个空格**）。 |
+
+**Base URL 建议**：例如 `https://你的域名`，路径统一为 **`/api/v1/...`**。若误写成 **`/api/me/...`**（少了 **`v1`**），除 Telegram 登录已提供的 **兼容路径**外，会得到 **HTTP 404**（生产环境若 `DEBUG` 关闭多为简短页；开发环境可能为 Django HTML 说明页）。
+
+**与「已取到用户信息」的关系**：前端展示用的 Telegram `user` 可与后端返回的 **`data.user`**（含 `id`、`telegram_id`、`username` 等）对照；**但调用业务接口必须以 `data.token` 为准**，否则会 **401**。
 
 ### 2.6 首页聚合（累计收益 / 余额 / 完成任务数 / 签到周历）
 
@@ -288,7 +315,9 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 ### 2.8 个人中心（提现 / 收益记录 / 提现记录 / 账号管理）
 
 对应 Stitch 设计稿 `_1`～`_5`：提现弹窗、收益记录、提现记录、账号管理、个人中心主页。  
-统一前缀 `GET|POST https://<host>/api/v1/me/...`，**需 Bearer**。
+统一前缀 `GET|POST https://<host>/api/v1/me/...`，**除另有说明外一律需 Bearer**（见 **§1.1**）。
+
+**说明**：若服务端日志出现 **`Unauthorized: /api/v1/me/center/`**，表示该次请求**未通过** Bearer 校验（未带、拼错、`Bearer` 后缺空格、token 过期等），与「Telegram 里是否能看到 user」无关；请按 **§2.5.1** 先完成 **POST 登录拿 token**，再在业务请求里带 **`Authorization`**。
 
 **环境变量（可选）**
 
@@ -302,7 +331,16 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 #### 2.8.1 个人中心聚合 — `GET /api/v1/me/center/`
 
+- **方法 / 路径**：`GET /api/v1/me/center/`
+- **鉴权**：**必须** `Authorization: Bearer <token>`（与 `GET /api/v1/me/home/` 相同）。
+
 在 `GET /api/v1/me/home/` 基础上增加等级/排名、最近收益、提现规则与外链；并包含与首页相同的 **`check_in` 周历**（字段同 **2.7.1**）。
+
+**未登录或 token 无效时**
+
+| HTTP | `code` | 说明 |
+| --- | --- | --- |
+| 401 | 4010 | 未登录或 token 无效（服务端可能记日志 `Unauthorized`） |
 
 | 字段 | 说明 |
 | --- | --- |
