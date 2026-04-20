@@ -201,12 +201,32 @@ def _check_in_week_payload(user: FrontendUser) -> dict:
 
 
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["GET", "POST"])
 def telegram_auth_api(request):
     """
     Telegram Mini App 登录：请求体传 init_data（与 WebApp.initData 一致），
     校验通过后按 telegram_id 查找或创建前台用户并签发 API Token。
+
+    GET 仅返回 JSON 说明（避免误用 GET 打开链接时得到 Django HTML 调试页）。
+    兼容路径见 data.paths。
     """
+    if request.method == "GET":
+        return api_response(
+            {
+                "methods": ["POST"],
+                "content_type": "application/json",
+                "paths": [
+                    "/api/v1/auth/telegram/",
+                    "/api/auth/telegram/",
+                    "/api/v1/telegram/miniapp-login/",
+                ],
+                "body_fields": {
+                    "init_data": "与 Telegram.WebApp.initData 一致；也可用驼峰 initData",
+                },
+            },
+            message="请使用 POST 发起 Telegram 登录",
+        )
+
     try:
         body = parse_json_body(request)
     except ValueError as exc:

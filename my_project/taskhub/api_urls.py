@@ -16,6 +16,11 @@ urlpatterns = [
     path("auth/register/", api_views.register_api, name="taskhub-register"),
     path("auth/login/", api_views.login_api, name="taskhub-login"),
     path("auth/telegram/", miniapp_api.telegram_auth_api, name="taskhub-auth-telegram"),
+    path(
+        "telegram/miniapp-login/",
+        miniapp_api.telegram_auth_api,
+        name="taskhub-auth-telegram-miniapp-alias",
+    ),
     path("auth/logout/", api_views.logout_api, name="taskhub-logout"),
     path("me/home/", miniapp_api.my_home_api, name="taskhub-me-home"),
     path("me/center/", profile_center_api.me_center_api, name="taskhub-me-center"),

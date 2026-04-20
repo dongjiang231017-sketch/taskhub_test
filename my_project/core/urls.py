@@ -20,6 +20,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from taskhub import miniapp_api
 from taskhub.doc_html_view import openapi_discovery_json, taskhub_api_docs_html
 
 # 配置后台标题
@@ -32,6 +33,8 @@ urlpatterns = [
     path("docs/", RedirectView.as_view(url="/docs/taskhub-api/", permanent=False)),
     path("openapi.json", openapi_discovery_json, name="openapi-discovery-json"),
     path("docs/taskhub-api/", taskhub_api_docs_html, name="taskhub-api-docs-html"),
+    # 兼容未带 /v1/ 的前端或网关（与 POST /api/v1/auth/telegram/ 行为一致）
+    path("api/auth/telegram/", miniapp_api.telegram_auth_api),
     path('api/v1/', include('taskhub.api_urls')),
     path('api/v1/guides/', include('announcements.api_urls')),
     path('admin/', admin.site.urls),

@@ -72,7 +72,11 @@ Authorization: Bearer <token>
 
 在 Telegram Mini App 内使用 **`window.Telegram.WebApp.initData`**（**原样字符串**，不要自己拼 query）。
 
-- `POST /api/v1/auth/telegram/`
+- **主路径**：`POST /api/v1/auth/telegram/`
+- **兼容路径**（与主路径同一处理逻辑，任选其一配置到前端即可）：
+  - `POST /api/auth/telegram/`（少一层 `/v1/`，避免 Nginx/前端写成 `/api/auth/...` 时出现 **404 HTML**）
+  - `POST /api/v1/telegram/miniapp-login/`（别名）
+- `GET` 以上任一地址：返回 JSON，说明须用 **POST** 及路径列表（**不会**返回 Django HTML 调试页）。
 - **无需** Bearer；成功后与其它登录方式一样返回 `token`，后续请求带 `Authorization: Bearer <token>` 即可。
 
 请求体（JSON）：
@@ -801,7 +805,8 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/docs/` | 接口目录（JSON） | 否 |
 | POST | `/api/v1/auth/register/` | 用户注册并返回 token | 否 |
 | POST | `/api/v1/auth/login/` | 用户登录并返回 token | 否 |
-| POST | `/api/v1/auth/telegram/` | Telegram Mini App 登录（init_data）并返回 token | 否 |
+| GET / POST | `/api/v1/auth/telegram/` | Telegram Mini App 登录：POST init_data；GET 返回说明。另见根路由 POST /api/auth/telegram/ | 否 |
+| GET / POST | `/api/v1/telegram/miniapp-login/` | Telegram 登录别名，与 auth/telegram/ 相同 | 否 |
 | POST | `/api/v1/auth/logout/` | 退出登录 | 是 |
 | GET | `/api/v1/me/home/` | 首页聚合（用户/钱包/累计收益/签到周历） | 是 |
 | GET | `/api/v1/me/center/` | 个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in） | 是 |
