@@ -363,7 +363,8 @@ def build_mandatory_task_items(current_user):
     items = []
     for t in qs:
         app = app_by_task.get(t.id) if current_user else None
-        if app and app.status == TaskApplication.STATUS_ACCEPTED:
+        # 仅「已录用且已结奖 / 无应付奖励」才从首页必做区隐藏；接了未完成仍展示卡片便于继续校验
+        if app and app.status == TaskApplication.STATUS_ACCEPTED and _task_application_truly_done(app, t):
             continue
         data = serialize_task(t, current_user=current_user)
         enrich_task_card_fields(t, data)

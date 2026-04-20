@@ -146,11 +146,16 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "新手指南：详情（body=富文本 HTML；video_url 优先本地上传地址）",
         False,
     ),
-    PublicEndpoint(("GET",), "tasks/mandatory/", "首页必做任务列表（open + is_mandatory）", False),
+    PublicEndpoint(
+        ("GET",),
+        "tasks/mandatory/",
+        "首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏",
+        False,
+    ),
     PublicEndpoint(
         ("GET",),
         "tasks/center/",
-        "任务中心页：分类 Tab + 必做 + 可用任务（分页），含 platform_key / slot_progress_percent",
+        "任务中心：分类 Tab + 必做 + 可用；必做区剔除规则同 tasks/mandatory/",
         False,
     ),
     PublicEndpoint(("GET",), "tasks/", "任务列表（分页、筛选）", False),

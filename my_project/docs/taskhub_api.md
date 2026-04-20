@@ -480,7 +480,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 ### 4.0 必做任务列表（首页「必做」卡片）
 
-与 `GET /api/v1/tasks/` 使用同一套 `task` 序列化字段；仅筛选 **`is_mandatory=true` 且 `status=open`**，按 `task_list_order` 降序。
+与 `GET /api/v1/tasks/` 使用同一套 `task` 序列化字段；仅筛选 **`is_mandatory=true` 且 `status=open`**，按 `task_list_order` 降序。已登录时：**仅当**当前用户对该任务为 **`accepted` 且已结奖（`reward_paid_at`）或任务无正数展示奖励** 时本条才从列表剔除；**已录用但未发奖**仍出现在列表中并带 `my_application`，便于继续完成校验。
 
 - `GET /api/v1/tasks/mandatory/`
 - **可不登录**。若带 Bearer，则每条任务会多返回 `my_application`（当前用户对该任务的报名，无则为 `null`）。
@@ -516,7 +516,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | 字段 | 说明 |
 | --- | --- |
 | `categories` | 数组：**首条为虚拟「全部」**（`id: null`, `slug: "all"`, `is_all: true`），其后为后台「任务分类」启用的分类（同 `GET /api/v1/categories/` 单条结构）。 |
-| `mandatory` | 对象：`items` 与 **`GET /api/v1/tasks/mandatory/`** 一致（必做、open、已录用则剔除）；`updated_at` 为服务端生成快照时间（ISO8601）。 |
+| `mandatory` | 对象：`items` 与 **`GET /api/v1/tasks/mandatory/`** 一致（必做、`status=open`；**仅**当前用户对该任务为 **`accepted` 且已结奖或无应付奖励** 时才剔除，接了未完成仍返回卡片并带 `my_application`）；`updated_at` 为服务端生成快照时间（ISO8601）。 |
 | `available` | 对象：`items` 为 **非必做**（`is_mandatory=false`）且 **`status=open`** 的任务；`pagination`；`updated_at`。排序：按任务 **`updated_at` 降序**（便于「更新于 x 分钟前」）。 |
 
 **任务对象在以上接口中，在通用 `task` 字段（见 **§4.3**）基础上额外包含（卡片 UI）：**
@@ -950,8 +950,8 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/guides/featured/` | 新手指南：置顶大卡/首条推荐（Announcement post_type=newbie_guide） | 否 |
 | GET | `/api/v1/guides/` | 新手指南：列表（category_slug=外键 slug 或旧 key；guide_type；分页；正文在详情） | 否 |
 | GET | `/api/v1/guides/{pk}/` | 新手指南：详情（body=富文本 HTML；video_url 优先本地上传地址） | 否 |
-| GET | `/api/v1/tasks/mandatory/` | 首页必做任务列表（open + is_mandatory） | 否 |
-| GET | `/api/v1/tasks/center/` | 任务中心页：分类 Tab + 必做 + 可用任务（分页），含 platform_key / slot_progress_percent | 否 |
+| GET | `/api/v1/tasks/mandatory/` | 首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏 | 否 |
+| GET | `/api/v1/tasks/center/` | 任务中心：分类 Tab + 必做 + 可用；必做区剔除规则同 tasks/mandatory/ | 否 |
 | GET | `/api/v1/tasks/` | 任务列表（分页、筛选） | 否 |
 | POST | `/api/v1/tasks/` | 发布任务 | 是 |
 | GET | `/api/v1/tasks/{task_id}/` | 任务详情 | 否 |
