@@ -5,7 +5,7 @@ from functools import wraps
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, IntegrityError, OperationalError, connections, transaction
-from django.db.models import Count, Q
+from django.db.models import Case, CharField, Count, Q, Value, When
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -484,6 +484,128 @@ def serialize_application(application, request=None):
         "status_display": application.get_status_display(),
         "created_at": application.created_at.isoformat(),
         "decided_at": application.decided_at.isoformat() if application.decided_at else None,
+    }
+
+
+# —— 任务记录页（Mini App「任务记录」Tab）——
+# `record_status` 分类与列表 annotate 的 Case/When 顺序须一致，勿单独改一半。
+RECORD_TAB_ALL = "all"
+RECORD_STATUS_IN_PROGRESS = "in_progress"
+RECORD_STATUS_UNDER_REVIEW = "under_review"
+RECORD_STATUS_COMPLETED = "completed"
+RECORD_STATUS_INVALID = "invalid"
+RECORD_STATUS_LABELS = {
+    RECORD_STATUS_IN_PROGRESS: "进行中",
+    RECORD_STATUS_UNDER_REVIEW: "审核中",
+    RECORD_STATUS_COMPLETED: "已完成",
+    RECORD_STATUS_INVALID: "已失效",
+}
+
+
+def _task_application_payable_reward_q() -> Q:
+    return Q(task__reward_usdt__isnull=False, task__reward_usdt__gt=0) | Q(
+        task__reward_th_coin__isnull=False, task__reward_th_coin__gt=0
+    )
+
+
+def _task_applications_queryset_for_record_tabs(user):
+    open_tasks = Q(task__status__in=(Task.STATUS_OPEN, Task.STATUS_IN_PROGRESS))
+    pay = _task_application_payable_reward_q()
+    proof_ready = Q(proof_image__isnull=False) & ~Q(proof_image="")
+
+    return (
+        TaskApplication.objects.filter(applicant=user)
+        .select_related("task", "task__category", "task__publisher")
+        .annotate(
+            record_status=Case(
+                When(
+                    Q(status__in=(TaskApplication.STATUS_REJECTED, TaskApplication.STATUS_CANCELLED)),
+                    then=Value(RECORD_STATUS_INVALID),
+                ),
+                When(Q(status=TaskApplication.STATUS_PENDING) & ~open_tasks, then=Value(RECORD_STATUS_INVALID)),
+                When(
+                    Q(status=TaskApplication.STATUS_ACCEPTED)
+                    & Q(reward_paid_at__isnull=True)
+                    & pay
+                    & Q(task__status__in=(Task.STATUS_CLOSED, Task.STATUS_DRAFT)),
+                    then=Value(RECORD_STATUS_INVALID),
+                ),
+                When(
+                    Q(status=TaskApplication.STATUS_ACCEPTED)
+                    & (Q(reward_paid_at__isnull=False) | ~pay),
+                    then=Value(RECORD_STATUS_COMPLETED),
+                ),
+                When(
+                    Q(status=TaskApplication.STATUS_PENDING) & open_tasks,
+                    then=Value(RECORD_STATUS_UNDER_REVIEW),
+                ),
+                When(
+                    Q(status=TaskApplication.STATUS_ACCEPTED)
+                    & Q(task__verification_mode=Task.VERIFY_SCREENSHOT)
+                    & proof_ready
+                    & Q(reward_paid_at__isnull=True)
+                    & pay,
+                    then=Value(RECORD_STATUS_UNDER_REVIEW),
+                ),
+                default=Value(RECORD_STATUS_IN_PROGRESS),
+                output_field=CharField(max_length=20),
+            )
+        )
+    )
+
+
+def _task_record_time_fields(app: TaskApplication, record_status: str) -> tuple[object | None, str]:
+    if record_status == RECORD_STATUS_INVALID:
+        label = "更新时间"
+        dt = app.decided_at or app.updated_at
+    elif record_status == RECORD_STATUS_COMPLETED:
+        label = "完成时间"
+        dt = app.reward_paid_at or app.decided_at or app.updated_at
+    elif record_status == RECORD_STATUS_UNDER_REVIEW:
+        label = "提交时间"
+        if app.status == TaskApplication.STATUS_PENDING:
+            dt = app.created_at
+        else:
+            dt = app.self_verified_at or app.updated_at
+    else:
+        label = "更新时间"
+        dt = app.updated_at
+    return dt, label
+
+
+def _format_task_record_time(dt) -> tuple[str | None, str | None]:
+    if not dt:
+        return None, None
+    lt = timezone.localtime(dt)
+    return lt.isoformat(), lt.strftime("%Y-%m-%d %H:%M")
+
+
+def _task_record_reward_strings(task: Task) -> dict:
+    rewards: dict = {"usdt": None, "th_coin": None}
+    if task.reward_usdt is not None and task.reward_usdt > 0:
+        s = format(task.reward_usdt, "f").rstrip("0").rstrip(".") or "0"
+        rewards["usdt"] = f"+{s} USDT"
+    if task.reward_th_coin is not None and task.reward_th_coin > 0:
+        s = format(task.reward_th_coin, "f").rstrip("0").rstrip(".") or "0"
+        rewards["th_coin"] = f"+{s} TH"
+    return rewards
+
+
+def serialize_task_record_item(app: TaskApplication):
+    task = app.task
+    record_status = app.record_status
+    dt, time_label = _task_record_time_fields(app, record_status)
+    iso, disp = _format_task_record_time(dt)
+    return {
+        "id": app.id,
+        "task_id": task.id,
+        "title": task.title,
+        "platform_key": _task_platform_key(task),
+        "icon_url": None,
+        "record_status": record_status,
+        "record_status_display": RECORD_STATUS_LABELS.get(record_status, record_status),
+        "rewards": _task_record_reward_strings(task),
+        "time": {"label": time_label, "at": iso, "display": disp},
     }
 
 
@@ -1243,6 +1365,56 @@ def my_applied_tasks_api(request):
         }
         items.append(task_data)
     return api_response({"items": items})
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET"])
+def my_task_records_api(request):
+    """
+    任务记录列表：与 Mini App「全部 / 进行中 / 审核中 / 已完成 / 已失效」Tab 对齐，分页。
+    """
+    raw_tab = (request.GET.get("record_status") or request.GET.get("tab") or RECORD_TAB_ALL).strip().lower()
+    tab = RECORD_TAB_ALL if raw_tab in ("", RECORD_TAB_ALL) else raw_tab
+    allowed = {
+        RECORD_TAB_ALL,
+        RECORD_STATUS_IN_PROGRESS,
+        RECORD_STATUS_UNDER_REVIEW,
+        RECORD_STATUS_COMPLETED,
+        RECORD_STATUS_INVALID,
+    }
+    if tab not in allowed:
+        return api_error(
+            "record_status 须为 all / in_progress / under_review / completed / invalid（或兼容参数 tab）",
+            code=4070,
+            status=400,
+        )
+    try:
+        page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
+        page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
+    except ValueError as exc:
+        return api_error(str(exc), code=4016, status=400)
+    page_size = min(page_size, 50)
+
+    qs = _task_applications_queryset_for_record_tabs(request.api_user)
+    if tab != RECORD_TAB_ALL:
+        qs = qs.filter(record_status=tab)
+    total = qs.count()
+    offset = (page - 1) * page_size
+    rows = list(qs.order_by("-updated_at", "-id")[offset : offset + page_size])
+    items = [serialize_task_record_item(a) for a in rows]
+
+    return api_response(
+        {
+            "items": items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "has_more": offset + len(items) < total,
+            },
+        }
+    )
 
 
 def _auto_accept_after_binding_verify(application: TaskApplication) -> None:

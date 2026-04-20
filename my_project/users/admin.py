@@ -31,7 +31,6 @@ class FrontendUserAdmin(admin.ModelAdmin):
     # 后台列表显示的字段
     list_display = (
         'id',
-        'display_phone',
         'username',
         'telegram_id',
         'membership_level',
@@ -122,10 +121,6 @@ class FrontendUserAdmin(admin.ModelAdmin):
         if not rows:
             return "—"
         return binding_modal_trigger(rows, label="已绑定 {}".format(len(rows)))
-
-    @admin.display(description="手机号", ordering="phone")
-    def display_phone(self, obj):
-        return obj.phone or "—"
 
     def wallet_balance(self, obj):
         wallet = getattr(obj, 'wallet', None)

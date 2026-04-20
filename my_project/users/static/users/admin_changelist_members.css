@@ -18,10 +18,6 @@ body.model-frontenduser.change-list #result_list .column-id {
     width: 3.5rem;
 }
 
-body.model-frontenduser.change-list #result_list .column-display_phone {
-    width: 7rem;
-}
-
 body.model-frontenduser.change-list #result_list .column-username {
     width: 8rem;
 }

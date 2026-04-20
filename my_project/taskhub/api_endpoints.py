@@ -82,7 +82,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET", "POST"),
         "auth/telegram/",
-        "Telegram Mini App 登录：POST init_data；GET 返回说明。另见根路由 POST /api/auth/telegram/",
+        "Telegram 登录：POST init_data；可选 include_home 同包 me/home 数据；GET 说明；另见 POST /api/auth/telegram/",
         False,
     ),
     PublicEndpoint(
@@ -192,6 +192,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(("PATCH", "POST"), "applications/<int:application_id>/", "发布人审核报名", True),
     PublicEndpoint(("GET",), "me/published-tasks/", "我发布的任务", True),
     PublicEndpoint(("GET",), "me/applied-tasks/", "我报名的任务", True),
+    PublicEndpoint(
+        ("GET",),
+        "me/task-records/",
+        "任务记录：分页 + record_status 筛选（与 Tab 进行中/审核中/已完成/已失效 对齐）",
+        True,
+    ),
 )
 
 

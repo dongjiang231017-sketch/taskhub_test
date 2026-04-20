@@ -77,6 +77,29 @@ def _stats_for_user(user: FrontendUser) -> dict:
     }
 
 
+def _truthy_flag(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _home_data_for_user(user: FrontendUser) -> dict:
+    """与 GET /api/v1/me/home/ 的 data 结构一致（供 Telegram 登录一步拉齐）。"""
+    stats = _stats_for_user(user)
+    return {
+        "user": serialize_user(user),
+        "wallet": {"usdt": stats["usdt_balance"], "th_coin": stats["th_coin_balance"]},
+        "stats": {
+            "cumulative_earnings_usdt": stats["cumulative_earnings_usdt"],
+            "cumulative_earnings_th_coin": stats["cumulative_earnings_th_coin"],
+            "completed_tasks_count": stats["completed_tasks_count"],
+        },
+        "check_in": _check_in_week_payload(user),
+    }
+
+
 def _checkin_config_rewards(cfg: CheckInConfig) -> dict:
     return {
         "daily_reward_usdt": str(cfg.daily_reward_usdt),
@@ -222,6 +245,7 @@ def telegram_auth_api(request):
                 ],
                 "body_fields": {
                     "init_data": "与 Telegram.WebApp.initData 一致；也可用驼峰 initData",
+                    "include_home": "可选 true：登录成功后在同一响应里附带与 GET /api/v1/me/home/ 相同的 home 对象",
                 },
             },
             message="请使用 POST 发起 Telegram 登录",
@@ -297,7 +321,10 @@ def telegram_auth_api(request):
 
     payload_user = serialize_user(user)
     payload_user["telegram_first_name"] = first
-    return api_response({"token": token.key, "user": payload_user}, message="Telegram 登录成功")
+    out: dict = {"token": token.key, "user": payload_user}
+    if _truthy_flag(body.get("include_home") or body.get("includeHome")):
+        out["home"] = _home_data_for_user(user)
+    return api_response(out, message="Telegram 登录成功")
 
 
 @csrf_exempt
@@ -306,18 +333,7 @@ def telegram_auth_api(request):
 def my_home_api(request):
     """首页聚合：用户信息、钱包、累计收益、完成任务数（可选附带签到摘要）。"""
     user = request.api_user
-    stats = _stats_for_user(user)
-    data = {
-        "user": serialize_user(user),
-        "wallet": {"usdt": stats["usdt_balance"], "th_coin": stats["th_coin_balance"]},
-        "stats": {
-            "cumulative_earnings_usdt": stats["cumulative_earnings_usdt"],
-            "cumulative_earnings_th_coin": stats["cumulative_earnings_th_coin"],
-            "completed_tasks_count": stats["completed_tasks_count"],
-        },
-        "check_in": _check_in_week_payload(user),
-    }
-    return api_response(data)
+    return api_response(_home_data_for_user(user))
 
 
 @csrf_exempt

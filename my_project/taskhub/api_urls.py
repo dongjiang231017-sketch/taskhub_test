@@ -39,6 +39,7 @@ urlpatterns = [
     path("me/profile/", api_views.my_profile_api, name="taskhub-profile"),
     path("me/published-tasks/", api_views.my_published_tasks_api, name="taskhub-my-published-tasks"),
     path("me/applied-tasks/", api_views.my_applied_tasks_api, name="taskhub-my-applied-tasks"),
+    path("me/task-records/", api_views.my_task_records_api, name="taskhub-my-task-records"),
     path(
         "me/applications/<int:application_id>/verify-twitter/",
         api_views.application_twitter_verify_api,
