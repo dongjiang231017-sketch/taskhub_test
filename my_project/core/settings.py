@@ -359,3 +359,9 @@ SIMPLEUI_LOGO = "https://avatars.githubusercontent.com/u/23233045?s=200&v=4"
 ADMIN_SITE_HEADER = "TaskHub 管理后台"
 ADMIN_SITE_TITLE = "TaskHub"
 ADMIN_INDEX_TITLE = "任务平台与开放接口"
+
+# 服务器本地覆盖：存在 core/local_settings.py 时加载（不依赖 .env；见 local_settings.example.py）
+try:
+    from core.local_settings import *  # noqa: F403, E402
+except ImportError:
+    pass

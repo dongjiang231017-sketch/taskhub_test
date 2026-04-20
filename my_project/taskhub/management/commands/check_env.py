@@ -15,8 +15,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         env_path = settings.BASE_DIR / ".env"
+        ls_path = settings.BASE_DIR / "core" / "local_settings.py"
         self.stdout.write(f".env 路径: {env_path}")
         self.stdout.write(f".env 存在: {env_path.is_file()}")
+        self.stdout.write(f"core/local_settings.py 路径: {ls_path}")
+        self.stdout.write(f"core/local_settings.py 存在: {ls_path.is_file()}")
         try:
             import dotenv  # noqa: F401
 

@@ -11,3 +11,4 @@ core/twitter_secrets.py
 core/instagram_secrets.py
 core/apify_secrets.py
 core/telegram_secrets.py
+core/local_settings.py
