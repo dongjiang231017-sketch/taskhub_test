@@ -131,6 +131,11 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
+# Nginx 反代终止 HTTPS 时，让 Admin / CSRF 识别 `X-Forwarded-Proto` 与 `Host`（避免「CSRF cookie not set」类误报）
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+
 
 # Application definition
 

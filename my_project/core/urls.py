@@ -17,6 +17,7 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import HttpResponse
 from django.urls import include, path
 from django.views.generic import RedirectView
 
@@ -28,7 +29,13 @@ admin.site.site_header = getattr(settings, 'ADMIN_SITE_HEADER', 'Django 管理')
 admin.site.site_title = getattr(settings, 'ADMIN_SITE_TITLE', 'Django 站点管理员')
 admin.site.index_title = getattr(settings, 'ADMIN_INDEX_TITLE', '网站管理')
 
+def _noop_favicon(_request):
+    """避免浏览器/爬虫请求 /favicon.ico 时刷 Not Found 日志。"""
+    return HttpResponse(status=204)
+
+
 urlpatterns = [
+    path("favicon.ico", _noop_favicon),
     path('', RedirectView.as_view(url='/admin/', permanent=False)),
     path("docs/", RedirectView.as_view(url="/docs/taskhub-api/", permanent=False)),
     path("openapi.json", openapi_discovery_json, name="openapi-discovery-json"),

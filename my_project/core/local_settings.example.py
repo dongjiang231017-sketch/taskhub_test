@@ -30,3 +30,6 @@ DATABASES = {
 # DEBUG = False
 # ALLOWED_HOSTS = ["你的域名", "127.0.0.1"]
 # CSRF_TRUSTED_ORIGINS = ["https://你的域名"]
+# 若暂时用 http://公网IP 访问管理后台，须写完整来源，例如：
+# CSRF_TRUSTED_ORIGINS = ["http://8.219.124.25"]
+# 并确认 Nginx 已传 X-Forwarded-Proto（HTTPS 站点一般为 https）
