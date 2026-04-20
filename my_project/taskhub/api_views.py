@@ -1087,6 +1087,112 @@ def task_detail_api(request, task_id):
     return api_response({"task": serialize_task(task, current_user=current_user, include_contact=True)}, message="任务更新成功")
 
 
+def _task_has_payable_reward_amounts(task: Task) -> bool:
+    """与任务记录 annotate 一致：任务上是否配置了正数 USDT/TH 展示奖励。"""
+    return (task.reward_usdt is not None and task.reward_usdt > 0) or (
+        task.reward_th_coin is not None and task.reward_th_coin > 0
+    )
+
+
+def _task_application_truly_done(application: TaskApplication, task: Task) -> bool:
+    """已录用且视为「任务侧已完结」：已发奖，或本任务无应付展示奖励。"""
+    if application.status != TaskApplication.STATUS_ACCEPTED:
+        return False
+    if application.reward_paid_at:
+        return True
+    if not _task_has_payable_reward_amounts(task):
+        return True
+    return False
+
+
+def _reset_task_application_to_pending(
+    application: TaskApplication,
+    *,
+    bound_username: str | None,
+    proposal: str | None,
+    quoted_price,
+) -> None:
+    """同一 task+applicant 唯一约束下，允许用户重新走报名/校验流程。"""
+    if application.proof_image:
+        application.proof_image.delete(save=False)
+    application.proof_image = None
+    application.self_verified_at = None
+    application.decided_at = None
+    application.reward_paid_at = None
+    application.status = TaskApplication.STATUS_PENDING
+    application.bound_username = bound_username or None
+    application.proposal = proposal
+    application.quoted_price = quoted_price
+    application.save(
+        update_fields=[
+            "proof_image",
+            "self_verified_at",
+            "decided_at",
+            "reward_paid_at",
+            "status",
+            "bound_username",
+            "proposal",
+            "quoted_price",
+            "updated_at",
+        ]
+    )
+
+
+def _accepted_can_reset_to_pending_for_reapply(application: TaskApplication) -> bool:
+    """已录用但未结奖：仅当尚未提交任何进度（无自检时间、无截图）时才允许重置为待处理，避免误清「待审核」凭证。"""
+    if application.self_verified_at or application.proof_image:
+        return False
+    return True
+
+
+def _task_apply_handle_existing_row(request, task, dup, body, bound_username, proposal, quoted_price):
+    """
+    在事务内处理「同一用户已有一条报名」：幂等 pending、真正已完成、拒绝不可重报、
+    已取消/已录用但未产生进度且任务仍 open 时重置为 pending 再同步 body。
+    """
+    if dup.status == TaskApplication.STATUS_ACCEPTED:
+        if _task_application_truly_done(dup, task):
+            return api_response(
+                {"application": serialize_application(dup, request)},
+                message="您已完成该任务",
+            )
+        if not _accepted_can_reset_to_pending_for_reapply(dup):
+            return api_error(
+                "您已接取该任务，请继续完成校验或等待审核，无需重复报名。",
+                code=4100,
+                status=409,
+            )
+        _reset_task_application_to_pending(
+            dup, bound_username=bound_username, proposal=proposal, quoted_price=quoted_price
+        )
+        dup.refresh_from_db()
+        return _task_apply_sync_pending_application(
+            request, task, dup, body, bound_username, proposal, quoted_price
+        )
+
+    if dup.status == TaskApplication.STATUS_PENDING:
+        return _task_apply_sync_pending_application(
+            request, task, dup, body, bound_username, proposal, quoted_price
+        )
+
+    if dup.status == TaskApplication.STATUS_REJECTED:
+        return api_error("该任务报名已被拒绝，无法再次提交", code=4036, status=409)
+
+    if dup.status == TaskApplication.STATUS_CANCELLED:
+        if not is_mandatory_no_slot_cap(task):
+            if active_taker_count(task) >= task.applicants_limit:
+                return api_error("该任务接取人数已满", code=4035, status=400)
+        _reset_task_application_to_pending(
+            dup, bound_username=bound_username, proposal=proposal, quoted_price=quoted_price
+        )
+        dup.refresh_from_db()
+        return _task_apply_sync_pending_application(
+            request, task, dup, body, bound_username, proposal, quoted_price
+        )
+
+    return api_error("你已报名该任务", code=4036, status=409)
+
+
 def _task_apply_sync_pending_application(request, task, existing, body, bound_username, proposal, quoted_price):
     """更新已存在的 pending 报名（调用方须已持有 task/application 行锁或不在并发写路径）。"""
     effective_handle = bound_username or normalize_bound_username_for_task(task, existing.bound_username or "")
@@ -1141,17 +1247,42 @@ def task_apply_api(request, task_id):
 
     existing = TaskApplication.objects.filter(task_id=task_id, applicant_id=request.api_user.id).first()
     if existing:
-        if existing.status == TaskApplication.STATUS_ACCEPTED:
-            application = TaskApplication.objects.select_related("task", "applicant").get(pk=existing.pk)
-            return api_response(
-                {"application": serialize_application(application, request)},
-                message="您已完成该任务",
-            )
         if existing.status == TaskApplication.STATUS_REJECTED:
             return api_error("该任务报名已被拒绝，无法再次提交", code=4036, status=409)
+
+        peek = Task.objects.filter(pk=task_id).only(
+            "id", "status", "publisher_id", "reward_usdt", "reward_th_coin"
+        ).first()
+        if not peek:
+            return api_error("任务不存在", code=4032, status=404)
+
         if existing.status == TaskApplication.STATUS_CANCELLED:
-            return api_error("该任务报名已取消，无法再次提交", code=4093, status=409)
-        if existing.status == TaskApplication.STATUS_PENDING:
+            if peek.status != Task.STATUS_OPEN:
+                return api_error(
+                    "该任务报名已取消；任务当前不可报名时无法再次报名。",
+                    code=4093,
+                    status=409,
+                )
+        elif existing.status == TaskApplication.STATUS_ACCEPTED:
+            if _task_application_truly_done(existing, peek):
+                application = TaskApplication.objects.select_related("task", "applicant").get(pk=existing.pk)
+                return api_response(
+                    {"application": serialize_application(application, request)},
+                    message="您已完成该任务",
+                )
+            if peek.status != Task.STATUS_OPEN:
+                return api_error(
+                    "您曾接取该任务但未完成；当前任务不可报名。若后台将任务重新开放，可再次报名。",
+                    code=4097,
+                    status=409,
+                )
+            if not _accepted_can_reset_to_pending_for_reapply(existing):
+                return api_error(
+                    "您已接取该任务，请继续完成校验或等待审核；任务重新开放后亦不可重复报名。",
+                    code=4100,
+                    status=409,
+                )
+        elif existing.status == TaskApplication.STATUS_PENDING:
             with transaction.atomic():
                 try:
                     task = Task.objects.select_for_update().get(pk=task_id)
@@ -1169,6 +1300,8 @@ def task_apply_api(request, task_id):
                     request, task, locked, body, bound_username, proposal, quoted_price
                 )
             return resp
+        else:
+            return api_error("报名状态异常，请刷新后重试", code=4098, status=409)
 
     with transaction.atomic():
         try:
@@ -1183,24 +1316,16 @@ def task_apply_api(request, task_id):
 
         bound_username = normalize_bound_username_for_task(task, bound_username_raw) or None
 
-        if TaskApplication.objects.filter(task=task, applicant=request.api_user).exists():
-            dup = TaskApplication.objects.select_related("task", "applicant").get(
-                task=task, applicant=request.api_user
+        dup = (
+            TaskApplication.objects.select_for_update()
+            .select_related("task", "applicant")
+            .filter(task=task, applicant=request.api_user)
+            .first()
+        )
+        if dup:
+            return _task_apply_handle_existing_row(
+                request, task, dup, body, bound_username, proposal, quoted_price
             )
-            if dup.status == TaskApplication.STATUS_ACCEPTED:
-                return api_response(
-                    {"application": serialize_application(dup, request)},
-                    message="您已完成该任务",
-                )
-            if dup.status == TaskApplication.STATUS_PENDING:
-                return _task_apply_sync_pending_application(
-                    request, task, dup, body, bound_username, proposal, quoted_price
-                )
-            if dup.status == TaskApplication.STATUS_REJECTED:
-                return api_error("该任务报名已被拒绝，无法再次提交", code=4036, status=409)
-            if dup.status == TaskApplication.STATUS_CANCELLED:
-                return api_error("该任务报名已取消，无法再次提交", code=4093, status=409)
-            return api_error("你已报名该任务", code=4036, status=409)
 
         if not is_mandatory_no_slot_cap(task):
             if active_taker_count(task) >= task.applicants_limit:
@@ -1222,16 +1347,15 @@ def task_apply_api(request, task_id):
                 bound_username=bound_username,
             )
         except IntegrityError:
-            dup = TaskApplication.objects.filter(task_id=task_id, applicant_id=request.api_user.id).first()
-            if dup and dup.status == TaskApplication.STATUS_PENDING:
-                return _task_apply_sync_pending_application(
+            dup = (
+                TaskApplication.objects.select_for_update()
+                .select_related("task", "applicant")
+                .filter(task_id=task_id, applicant_id=request.api_user.id)
+                .first()
+            )
+            if dup:
+                return _task_apply_handle_existing_row(
                     request, task, dup, body, bound_username, proposal, quoted_price
-                )
-            if dup and dup.status == TaskApplication.STATUS_ACCEPTED:
-                application = TaskApplication.objects.select_related("task", "applicant").get(pk=dup.pk)
-                return api_response(
-                    {"application": serialize_application(application, request)},
-                    message="您已完成该任务",
                 )
             raise
         new_application_id = application.pk

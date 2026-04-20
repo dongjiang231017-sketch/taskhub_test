@@ -664,7 +664,16 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 }
 ```
 
-`bound_username`：非 Twitter/TikTok 绑定时可选；**`binding_platform=twitter` 或 `tiktok` 的账号绑定任务必填**（Twitter 不含 `@`；TikTok 可用户名或主页链接）。**同一用户重复 `POST` 报名同一任务**：若报名仍为 **`pending`**，接口会**幂等返回**已有报名并同步 body 里带的字段（便于多步页多次点「下一步」）；若已为 **`accepted`** 则直接返回成功；**`rejected` / `cancelled`** 仍不可再次报名。截图凭证目前请在后台「任务报名」中上传 `proof_image`（后续可再接 API 上传）。
+`bound_username`：非 Twitter/TikTok 绑定时可选；**`binding_platform=twitter` 或 `tiktok` 的账号绑定任务必填**（Twitter 不含 `@`；TikTok 可用户名或主页链接）。**同一用户重复 `POST` 报名同一任务**：
+
+- 报名仍为 **`pending`**：幂等同步 body 字段（便于多步页多次点「下一步」）。
+- 已为 **`accepted`** 且**已发奖或无应付展示奖励**：返回成功，提示「您已完成该任务」。
+- 已为 **`accepted`** 但未结奖、任务仍为 **`open`**、且**尚未产生进度**（无 `self_verified_at`、无 `proof_image`）：将本条报名**重置为 `pending`** 并同步 body，便于任务失效/关单后重新开放时**再次接取**；若已有自检时间或截图凭证，则返回 **409**（`code=4100`），请继续完成校验或等待审核，避免误清凭证。
+- **`cancelled`**：若任务当前为 **`open`**、且接取人数未满，同样**重置为 `pending`** 后可再次接取；任务不可报名时仍为 **409**（`code=4093`）。
+- **`rejected`**：仍不可再次报名（**409**，`code=4036`）。
+- 已接取未完成且任务**已不可报名**：**409**（`code=4097`），待后台将任务重新设为可报名后再 `POST`。
+
+截图凭证目前请在后台「任务报名」中上传 `proof_image`（后续可再接 API 上传）。
 
 ### 5.2 校验 Twitter 绑定并完成（用户）
 
