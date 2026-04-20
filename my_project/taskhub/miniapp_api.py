@@ -234,12 +234,18 @@ def telegram_auth_api(request):
 
     init_data = (body.get("init_data") or body.get("initData") or "").strip()
     if not init_data:
-        return api_error("init_data 必填（Telegram.WebApp.initData 原样字符串）", code=4060, status=400)
+        return api_error(
+            "init_data 必填：须传 Telegram.WebApp.initData 的完整字符串（带签名）。"
+            "仅前端展示 initDataUnsafe / user 无法在后端开户；须在 Telegram 内打开 Mini App 后取 initData，"
+            "且 Content-Type 须为 application/json。",
+            code=4060,
+            status=400,
+        )
 
     bot_token = get_telegram_bot_token()
     if not bot_token:
         return api_error(
-            "服务端未配置 TELEGRAM_BOT_TOKEN（后台「第三方集成密钥」或环境变量），无法校验 Telegram 登录",
+            "服务端未配置 TELEGRAM_BOT_TOKEN（后台「第三方集成密钥」或环境变量），无法校验 Telegram 登录，因而无法自动注册",
             code=4061,
             status=503,
         )
@@ -247,7 +253,10 @@ def telegram_auth_api(request):
     try:
         validated = validate_webapp_init_data(init_data, bot_token)
     except ValueError as exc:
-        return api_error(str(exc), code=4062, status=401)
+        hint = (
+            "（常见原因：initData 已过期请重开 Mini App；或 Mini App 绑定的 Bot 与后台 TELEGRAM_BOT_TOKEN 不是同一个）"
+        )
+        return api_error(f"{exc}{hint}", code=4062, status=401)
 
     tg = validated["telegram_user"]
     tid = int(tg["id"])

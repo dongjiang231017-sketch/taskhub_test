@@ -111,6 +111,14 @@ Authorization: Bearer <token>
 2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户会分配 `username`（如 `tg123456789`），`phone` 为空，并自动创建钱包。
 3. 签发/刷新 `ApiToken` 并返回（与手机号登录相同结构）。
 
+**业务错误（未自动注册时优先核对）**
+
+| HTTP | code | 常见原因 |
+| --- | --- | --- |
+| 400 | 4060 | 未传 `init_data` / 传了 `initDataUnsafe` 或仅展示 `user`；或非 Mini App 环境 `initData` 为空 |
+| 503 | 4061 | 服务端未配置 `TELEGRAM_BOT_TOKEN`（无法验签，无法开户） |
+| 401 | 4062 | `init_data` 签名校验失败或已过期；**Bot 与 Mini App 绑定的机器人不一致** |
+
 成功时 `data` 示例：
 
 ```json
@@ -132,6 +140,8 @@ Authorization: Bearer <token>
 ```
 
 #### 2.5.1 前端联调核对（Telegram 里已能取到用户信息时）
+
+**重要**：后端**不会**仅凭前端「识别到 Telegram 账号」（例如只读了 **`WebApp.initDataUnsafe`** 或 **`WebApp.user`**）就写库；**必须**由前端发起 **`POST`**，body 里传 **`init_data` = `WebApp.initData` 整段**（有签名的字符串），校验通过后才会 **自动创建** `FrontendUser` 并返回 `token`。若从未成功 POST 或 `init_data` 为空，数据库里就不会有新用户。
 
 Mini App / Telegram 客户端里通过 **`Telegram.WebApp`** 取到的 **`user`（id、username 等）只表示在 Telegram 侧的身份**，**不能**代替本后端的登录态。
 
