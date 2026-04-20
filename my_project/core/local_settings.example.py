@@ -30,6 +30,12 @@ DATABASES = {
 # DEBUG = False
 # ALLOWED_HOSTS = ["你的域名", "127.0.0.1"]
 # CSRF_TRUSTED_ORIGINS = ["https://你的域名"]
+
+# 若改完仍报 DisallowedHost：1）改完务必重启 Gunicorn；2）在服务器执行
+#   python manage.py shell -c "from django.conf import settings; print(settings.ALLOWED_HOSTS)"
+#   确认列表里真有你的域名；3）若仍不行，可在环境变量设 ALLOWED_HOSTS_EXTRA=i.tongrentang.info（逗号分隔多个）
+# 4）HTTPS 反代若配置了 X-Forwarded-Host，须与 ALLOWED_HOSTS 一致；可临时在下方取消注释以排查：
+# USE_X_FORWARDED_HOST = False
 # 若暂时用 http://公网IP 访问管理后台，须写完整来源，例如：
 # CSRF_TRUSTED_ORIGINS = ["http://8.219.124.25"]
 # 并确认 Nginx 已传 X-Forwarded-Proto（HTTPS 站点一般为 https）

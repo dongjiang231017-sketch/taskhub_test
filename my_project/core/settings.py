@@ -370,3 +370,13 @@ try:
     from core.local_settings import *  # noqa: F403, E402
 except ImportError:
     pass
+
+# 追加域名（逗号分隔），无需改 local_settings.py；Supervisor / 宝塔「环境变量」里设 ALLOWED_HOSTS_EXTRA 即可
+_extra_hosts = os.environ.get("ALLOWED_HOSTS_EXTRA", "").strip()
+if _extra_hosts:
+    _merged = [h.strip() for h in ALLOWED_HOSTS if str(h).strip()]
+    for h in _extra_hosts.split(","):
+        h = h.strip()
+        if h and h not in _merged:
+            _merged.append(h)
+    ALLOWED_HOSTS = _merged
