@@ -13,7 +13,7 @@
 - `code = 0` 表示成功
 - 非 `0` 表示业务错误
 
-**前端速查（Telegram 邀请 / Foxi 式链接）**：服务端配置的 **`https://t.me/<Bot>?start=ref_…`** 与响应里的 **`data.invite_link`**（含 `full_url`、`link_style`、`start_param`、可选 **`mini_app_url`**）写在 **§4.5** 环境变量表与 **§4.5.4**；**`start_param` / 注册 `ref` / `ref_<TelegramId>`** 的绑定规则写在 **§2.5** 与 **§2.1**。**§9 接口速查**里 `invite-overview` 一行有入口提示，字段细节以 **§4.5** 为准（勿只在速查表里找长说明）。
+**前端速查（Telegram 邀请 / Foxi 式链接）**：排行 **`data.invite_link`** 里**给用户复制、分享只用 `full_url` 一个字段**（不要用 `path` 再拼第二条链接）。若 `full_url` 仍是 **`http(s)://你的域名/invite/...`**，说明**服务端未配置**环境变量 **`TELEGRAM_BOT_USERNAME`**，前端改不出 `t.me`，须运维配置并重启。字段含义与 **`link_style` / `start_param`** 见 **§4.5**；**`start_param` / 注册 `ref`** 绑定见 **§2.5**、**§2.1**。
 
 ## 1. 鉴权规则
 
@@ -664,10 +664,18 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | --- | --- |
 | `TELEGRAM_BOT_USERNAME` | Bot 用户名（**无** `@`）。若配置，**优先**生成 Foxi 式链接：`https://t.me/{username}?start={TELEGRAM_INVITE_START_PREFIX}{邀请人 telegram_id 或 invite_code}`（邀请人已绑定 Telegram 时用数字 id，否则用邀请码）。 |
 | `TELEGRAM_INVITE_START_PREFIX` | 默认 `ref_`；与 `?start=` 拼接在 id/码前。 |
-| `TELEGRAM_MINI_APP_SHORT_NAME` | 可选；与 `TELEGRAM_BOT_USERNAME` 同时配置时，`invite_link` 会多返回 **`mini_app_url`**：`https://t.me/{bot}/{short}?startapp={invite_code}`，便于用户在 **Mini App** 内登录时 `initData.start_param` 仍带邀请码（`?start=` 先打开 Bot 对话，不会自动把参数交给 WebApp，需 Bot 菜单/按钮再打开 Mini App）。 |
+| `TELEGRAM_MINI_APP_SHORT_NAME` | 可选；**接口不返回**第二条 URL。与 `TELEGRAM_BOT_USERNAME` 同时配置时，若产品需要「直接打开 Mini App 并带邀请码」，请前端或运营按固定格式自行拼接：`https://t.me/{TELEGRAM_BOT_USERNAME}/{TELEGRAM_MINI_APP_SHORT_NAME}?startapp={data.invite_link.invite_code}`（与 `POST /api/v1/auth/telegram/` 的 `start_param` 解析一致）。 |
 | `INVITE_LINK_BASE_URL` | **未**配置 `TELEGRAM_BOT_USERNAME` 时使用：邀请落地页前缀，**勿**尾斜杠。例 `https://task.example.com`；未配置时 `invite_link.full_url` 为当前站点绝对路径 `/invite/{invite_code}`。 |
 | `INVITE_COMMISSION_RATE` | 默认 `0.10`；用于「预计收益」估算与 `commission.label` 文案。 |
 | `PLATFORM_STATS_ANCHOR_DATE` | `YYYY-MM-DD`，全站「运营天数」起点；不设则取库内最早用户/任务创建日。 |
+
+**前端：邀请链接 UI（必读）**
+
+1. **「Telegram 邀请链接」文案下，只展示并复制 `data.invite_link.full_url`。** 不要再用 `path` 拼成 `域名 + path` 当作第二条链接；`path` 仅为站内路径说明，与 `full_url` 二选一展示即可（推荐只展示 `full_url`）。
+2. **`full_url` 形态由服务端环境变量决定**：已配置 `TELEGRAM_BOT_USERNAME` 时为 `https://t.me/<Bot>?start=…`；未配置时为 `INVITE_LINK_BASE_URL + /invite/<code>` 或当前请求的站点绝对地址（故线上会出现 `http://i.tongrentang.info/invite/...` —— **属未配 Bot 用户名，不是接口缺字段**）。
+3. **`link_style`** 取值：`telegram_bot_start`（已是 t.me 深链）、`custom_base`（用了 `INVITE_LINK_BASE_URL`）、`site_absolute`（用了当前 Host 拼出来的绝对 URL）。可用于埋点或提示运维。
+4. **`start_param`**：与 `full_url` 中 `?start=` 一致，一般**不必**在界面上单独展示。
+5. **Mini App 直链**：若需「点一下直接进 WebApp 且带邀请码」，不要用第二份接口字段；在已配置 `TELEGRAM_BOT_USERNAME` 与 `TELEGRAM_MINI_APP_SHORT_NAME` 的前提下，按上表公式用 **`invite_code`** 拼 `?startapp=` 链接即可。
 
 #### 4.5.1 全站统计（顶部四卡）
 
@@ -712,7 +720,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 `data.invite`：`total_invited`、`referral_credited_usdt`（当前用户钱包 **`change_type=reward`** 且 USDT 正数累计）、`referral_estimated_display_usdt`（在已入账推荐奖励基础上，叠加「下级 `task_reward` USDT 累计 × `INVITE_COMMISSION_RATE`」的**展示用**估算）、`commission`（`decimal` / `percent` / `label`）、`note`（字段含义说明）。
 
-`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）、`link_style`（`telegram_bot_start` / `custom_base` / `site_absolute`）、`start_param`（仅 Bot 深链形态时有，即 `?start=` 的值）。若配置了 `TELEGRAM_MINI_APP_SHORT_NAME`，另有 **`mini_app_url`**（直接打开 Mini App 并带 `startapp=`）。
+`data.invite_link`：`invite_code`、`path`、`**full_url**`（**唯一**应对用户展示的分享/复制链接）、`link_style`（`telegram_bot_start` / `custom_base` / `site_absolute`）、`start_param`（仅 `telegram_bot_start` 时有，与 `?start=` 一致）。**不再**返回第二条 `mini_app_url`；Mini App 直链见 **§4.5** 环境变量表与上文「前端：邀请链接 UI」。
 
 `data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（按**已录用任务数**的全站名次：`rank` / `completed_tasks` / `surpassed_users_percent`）、**`commission`**（按 **`task_reward` USDT 累计** 的佣金榜名次：`rank` / `task_commission_usdt` / `surpassed_users_percent`）、`total_contribution_usdt`（推荐奖励 USDT 累计，与 `referral_credited_usdt` 一致，底栏「总贡献」语境）。
 

@@ -124,11 +124,11 @@ def _platform_total_users() -> int:
 
 def _invite_link_for_user(user: FrontendUser, request) -> dict:
     """
-    邀请链接优先级：
+    邀请链接优先级（对外只暴露一条可复制 URL：full_url）：
     1) 配置了 TELEGRAM_BOT_USERNAME → https://t.me/<bot>?start=<prefix><tg_id 或 invite_code>（与 FoxiGrow 等一致）
     2) INVITE_LINK_BASE_URL → 拼接 /invite/<code>
     3) 当前站点绝对路径 /invite/<code>
-    若同时配置 TELEGRAM_MINI_APP_SHORT_NAME，则额外返回 mini_app_url（?startapp=invite_code，便于 Mini App initData 绑定）。
+    Mini App 直链（?startapp=）由文档给出拼接公式，不在本对象里再返回第二条 URL。
     """
     code = user.invite_code
     path = f"/invite/{code}"
@@ -143,10 +143,6 @@ def _invite_link_for_user(user: FrontendUser, request) -> dict:
         out["full_url"] = f"https://t.me/{bot}?start={start_arg}"
         out["link_style"] = "telegram_bot_start"
         out["start_param"] = start_arg
-        short = (getattr(settings, "TELEGRAM_MINI_APP_SHORT_NAME", None) or "").strip()
-        if short:
-            # 直接打开 Mini App 时 initData.start_param 用邀请码最稳（必有）；与 POST auth 解析逻辑一致
-            out["mini_app_url"] = f"https://t.me/{bot}/{short}?startapp={code}"
     else:
         base = (getattr(settings, "INVITE_LINK_BASE_URL", None) or "").strip().rstrip("/")
         if base:
