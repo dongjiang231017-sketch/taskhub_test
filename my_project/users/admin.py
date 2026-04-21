@@ -38,11 +38,11 @@ class FrontendUserAdmin(admin.ModelAdmin):
         'wallet_balance',
         'wallet_frozen',
         'invite_code',
-        'referrer',
+        'referrer_display',
         'status',
         'created_at',
     )
-    list_select_related = ('wallet',)
+    list_select_related = ('wallet', 'referrer')
     
     # 允许点击进入编辑页的字段
     list_display_links = ('id', 'username')
@@ -51,13 +51,12 @@ class FrontendUserAdmin(admin.ModelAdmin):
     list_filter = ('status', 'membership_level', 'created_at')
     
     # 搜索框支持的字段
-    search_fields = ('phone', 'username', 'invite_code')
+    search_fields = ('phone', 'username', 'invite_code', 'telegram_username')
     
     # 在后台编辑时，隐藏加密密码字段，防止管理员乱改导致密码损坏
     exclude = ('password', 'pay_password')
     
-    # 关联字段搜索优化（当推荐人很多时，这个配置非常有用）
-    raw_id_fields = ('referrer',)
+    autocomplete_fields = ('referrer',)
     
     # 字段分组显示，让后台更整洁
     fieldsets = (
@@ -133,3 +132,11 @@ class FrontendUserAdmin(admin.ModelAdmin):
         return wallet.frozen if wallet else '暂无'
     wallet_frozen.short_description = 'TH Coin'
     wallet_frozen.admin_order_field = 'wallet__frozen'
+
+    @admin.display(description="推荐人", ordering="referrer__username")
+    def referrer_display(self, obj):
+        r = obj.referrer
+        if not r:
+            return "—"
+        extra = f" @{r.telegram_username}" if (r.telegram_username or "").strip() else ""
+        return f"{r.username}{extra} (#{r.id})"

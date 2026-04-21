@@ -72,6 +72,9 @@ class FrontendUser(models.Model):
             return False
         return check_password(raw_pay_password, self.pay_password)
 
+    def __str__(self):
+        return f"{self.username} (#{self.id})"
+
     class Meta:
         verbose_name = "会员"
         verbose_name_plural = "会员列表"

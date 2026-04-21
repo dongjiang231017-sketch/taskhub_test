@@ -126,8 +126,8 @@ def _invite_link_for_user(user: FrontendUser, request) -> dict:
     """
     邀请链接优先级（对外只暴露一条可复制 URL：full_url）：
     1) 同时配置 TELEGRAM_BOT_USERNAME + TELEGRAM_MINI_APP_SHORT_NAME →
-       https://t.me/<bot>/<short>?startapp=<prefix><tg_id 或 invite_code>（Mini App 直链，initData 带 start_param）
-    2) 仅 TELEGRAM_BOT_USERNAME → https://t.me/<bot>?start=…（Bot 深链，与 FoxiGrow 等一致）
+       https://t.me/<bot>/<short>?startapp=<prefix><invite_code>（Mini App 直链；载荷为邀请码便于辨认）
+    2) 仅 TELEGRAM_BOT_USERNAME → https://t.me/<bot>?start=…（Bot 深链）
     3) INVITE_LINK_BASE_URL → 拼接 /invite/<code>
     4) 当前站点绝对路径 /invite/<code>
     """
@@ -136,12 +136,11 @@ def _invite_link_for_user(user: FrontendUser, request) -> dict:
     prefix = getattr(settings, "TELEGRAM_INVITE_START_PREFIX", "ref_") or "ref_"
     bot = (getattr(settings, "TELEGRAM_BOT_USERNAME", None) or "").strip().lstrip("@")
     short = (getattr(settings, "TELEGRAM_MINI_APP_SHORT_NAME", None) or "").strip()
-    start_value = str(user.telegram_id) if user.telegram_id is not None else code
-
+    # 对外邀请链接统一用邀请码（不用 telegram_id，避免链接里暴露长数字 ID）
+    start_arg = f"{prefix}{code}"
     out: dict = {"invite_code": code, "path": path}
 
     if bot:
-        start_arg = f"{prefix}{start_value}"
         out["start_param"] = start_arg
         if short:
             out["full_url"] = f"https://t.me/{bot}/{short}?startapp={start_arg}"

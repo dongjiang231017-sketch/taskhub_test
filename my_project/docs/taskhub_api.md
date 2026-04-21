@@ -685,7 +685,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 | 变量 | 说明 |
 | --- | --- |
-| `TELEGRAM_BOT_USERNAME` | Bot 用户名（**无** `@`）。与下 **`TELEGRAM_MINI_APP_SHORT_NAME` 同时配**则 `full_url` 为 Mini App 直链；否则为 `https://t.me/{username}?start=…`。载荷均为 `{TELEGRAM_INVITE_START_PREFIX}{邀请人 telegram_id 或 invite_code}`。 |
+| `TELEGRAM_BOT_USERNAME` | Bot 用户名（**无** `@`）。与下 **`TELEGRAM_MINI_APP_SHORT_NAME` 同时配**则 `full_url` 为 Mini App 直链；否则为 `https://t.me/{username}?start=…`。`start_param` / `startapp` 载荷为 **`{TELEGRAM_INVITE_START_PREFIX}{邀请码}`**（邀请人的 **`invite_code`**，便于分享辨认；旧链 `ref_<TelegramId>` 仍可解析绑定）。 |
 | `TELEGRAM_INVITE_START_PREFIX` | 默认 `ref_`；与 `?start=` 拼接在 id/码前。 |
 | `TELEGRAM_WEBHOOK_SECRET` | 与 **`setWebhook`** 的 **`secret_token`** 一致；非空则校验 **`POST /api/v1/telegram/webhook/`** 请求头 **`X-Telegram-Bot-Api-Secret-Token`**。详见 **§2.5**。 |
 | `TELEGRAM_START_INVITE_PENDING_TTL_SECONDS` | 默认 `604800`（7 天）；Webhook 暂存邀请载荷的有效期。 |

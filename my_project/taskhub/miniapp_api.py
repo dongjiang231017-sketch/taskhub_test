@@ -37,6 +37,15 @@ from .api_views import (
 logger = logging.getLogger(__name__)
 
 
+def _site_username_base_from_telegram(tg_username: str | None, telegram_id: int) -> str:
+    """站点用户名基底：优先 Telegram @名（仅字母数字下划线），否则 tg<数字ID>。"""
+    if tg_username:
+        u = "".join(c for c in tg_username.strip() if c.isalnum() or c == "_").strip("_")
+        if u:
+            return u[:50]
+    return f"tg{telegram_id}"[:50]
+
+
 def _local_today():
     return timezone.localdate()
 
@@ -294,7 +303,7 @@ def telegram_auth_api(request):
     tg_username = (tg.get("username") or "").strip() or None
     first = (tg.get("first_name") or "").strip() or "User"
 
-    base_username = (f"tg_{tg_username}" if tg_username else f"tg{tid}")[:44]
+    base_username = _site_username_base_from_telegram(tg_username, tid)
     username = base_username
     suffix = 0
     while FrontendUser.objects.filter(username=username).exclude(telegram_id=tid).exists():
@@ -317,9 +326,22 @@ def telegram_auth_api(request):
             Wallet.objects.get_or_create(user=user)
         else:
             Wallet.objects.get_or_create(user=user)
+            to_save: list[str] = []
             if tg_username and user.telegram_username != tg_username:
                 user.telegram_username = tg_username
-                user.save(update_fields=["telegram_username"])
+                to_save.append("telegram_username")
+            # 早期自动生成的 tg_xxx / tg数字ID，在 Telegram 有 @名时升级为与 TG 一致的站点用户名
+            if tg_username:
+                pref = _site_username_base_from_telegram(tg_username, tid)
+                legacy = user.username == f"tg{tid}" or (
+                    user.username.lower() == f"tg_{tg_username.lower()}"[:50]
+                )
+                if pref and pref != user.username and legacy:
+                    if not FrontendUser.objects.filter(username=pref).exclude(pk=user.pk).exists():
+                        user.username = pref
+                        to_save.append("username")
+            if to_save:
+                user.save(update_fields=to_save)
 
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
