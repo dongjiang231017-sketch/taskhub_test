@@ -48,8 +48,8 @@ DATABASES = {
 # Foxi 式邀请链接：生产务必配置 Bot 用户名（无 @），否则 invite_link.full_url 仍是浏览器打开的 https://你的域名/invite/...
 # TELEGRAM_BOT_USERNAME=YourBot
 # TELEGRAM_INVITE_START_PREFIX=ref_
-# 可选：Mini App 短名；直链格式见 docs/taskhub_api.md §4.5（接口只返回一条 full_url，不返回第二条 URL）
-# TELEGRAM_MINI_APP_SHORT_NAME=myapp
+# 与上同时配时，邀请链接 full_url 为 https://t.me/jiangcaiji_bot/task_hub_test?startapp=ref_…（按你 BotFather 实际短名改）
+# TELEGRAM_MINI_APP_SHORT_NAME=task_hub_test
 # 未配 TELEGRAM_BOT_USERNAME 时可用站内或自定义前缀落地页：
 # INVITE_LINK_BASE_URL=https://task.example.com
 # INVITE_COMMISSION_RATE=0.10

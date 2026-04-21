@@ -125,24 +125,30 @@ def _platform_total_users() -> int:
 def _invite_link_for_user(user: FrontendUser, request) -> dict:
     """
     邀请链接优先级（对外只暴露一条可复制 URL：full_url）：
-    1) 配置了 TELEGRAM_BOT_USERNAME → https://t.me/<bot>?start=<prefix><tg_id 或 invite_code>（与 FoxiGrow 等一致）
-    2) INVITE_LINK_BASE_URL → 拼接 /invite/<code>
-    3) 当前站点绝对路径 /invite/<code>
-    Mini App 直链（?startapp=）由文档给出拼接公式，不在本对象里再返回第二条 URL。
+    1) 同时配置 TELEGRAM_BOT_USERNAME + TELEGRAM_MINI_APP_SHORT_NAME →
+       https://t.me/<bot>/<short>?startapp=<prefix><tg_id 或 invite_code>（Mini App 直链，initData 带 start_param）
+    2) 仅 TELEGRAM_BOT_USERNAME → https://t.me/<bot>?start=…（Bot 深链，与 FoxiGrow 等一致）
+    3) INVITE_LINK_BASE_URL → 拼接 /invite/<code>
+    4) 当前站点绝对路径 /invite/<code>
     """
     code = user.invite_code
     path = f"/invite/{code}"
     prefix = getattr(settings, "TELEGRAM_INVITE_START_PREFIX", "ref_") or "ref_"
     bot = (getattr(settings, "TELEGRAM_BOT_USERNAME", None) or "").strip().lstrip("@")
+    short = (getattr(settings, "TELEGRAM_MINI_APP_SHORT_NAME", None) or "").strip()
     start_value = str(user.telegram_id) if user.telegram_id is not None else code
 
     out: dict = {"invite_code": code, "path": path}
 
     if bot:
         start_arg = f"{prefix}{start_value}"
-        out["full_url"] = f"https://t.me/{bot}?start={start_arg}"
-        out["link_style"] = "telegram_bot_start"
         out["start_param"] = start_arg
+        if short:
+            out["full_url"] = f"https://t.me/{bot}/{short}?startapp={start_arg}"
+            out["link_style"] = "telegram_mini_app_startapp"
+        else:
+            out["full_url"] = f"https://t.me/{bot}?start={start_arg}"
+            out["link_style"] = "telegram_bot_start"
     else:
         base = (getattr(settings, "INVITE_LINK_BASE_URL", None) or "").strip().rstrip("/")
         if base:

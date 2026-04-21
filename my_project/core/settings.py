@@ -42,7 +42,7 @@ except ImportError:
 
 # 邀请链接「t.me/BotUsername?start=ref_xxx」形态：填 Bot 用户名（无 @），与 FoxiGrow 等一致；不配则仍用下方 INVITE_LINK_BASE_URL / 站内路径
 TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
-# 可选：Mini App 短名（BotFather Direct Link 的 app 名）；文档中用于拼接 `https://t.me/<bot>/<short>?startapp=<invite_code>`，接口 invite_link 仅返回一条 full_url
+# 可选：Mini App 短名（BotFather「Direct Link」里的 app 名，如 task_hub_test）；与 TELEGRAM_BOT_USERNAME 同时配置时 invite_link.full_url 为 https://t.me/<bot>/<short>?startapp=…
 TELEGRAM_MINI_APP_SHORT_NAME = os.environ.get("TELEGRAM_MINI_APP_SHORT_NAME", "").strip()
 # ?start= 参数前缀，默认 ref_（与常见「ref_+TelegramId」一致）
 TELEGRAM_INVITE_START_PREFIX = os.environ.get("TELEGRAM_INVITE_START_PREFIX", "ref_").strip() or "ref_"
