@@ -82,7 +82,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET", "POST"),
         "auth/telegram/",
-        "Telegram 登录：POST init_data；可选 include_home 同包 me/home 数据；GET 说明；另见 POST /api/auth/telegram/",
+        "Telegram 登录：POST init_data；可选 include_home；start_param/ref 绑定 referrer（见文档 §2.5）；GET 说明；另见 POST /api/auth/telegram/",
         False,
     ),
     PublicEndpoint(
@@ -180,13 +180,13 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET",),
         "me/ranking/invite-overview/",
-        "排行邀请区：累计邀请、推荐奖励/预计、返佣比例、邀请链接；me 含 invite/task/commission 排名",
+        "排行邀请区：data.invite_link（full_url 可为 t.me?start=ref_…，见 §4.5）+ 邀请统计 + me 排名",
         True,
     ),
     PublicEndpoint(
         ("GET",),
         "me/rankings/invite-overview/",
-        "同 me/ranking/invite-overview/（复数别名）",
+        "同 me/ranking/invite-overview/（复数 rankings 别名）",
         True,
     ),
     PublicEndpoint(("GET",), "me/ranking/invitees/", "我的邀请明细分页（下级完成数+贡献返佣展示）", True),

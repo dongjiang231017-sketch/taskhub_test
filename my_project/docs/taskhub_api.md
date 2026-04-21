@@ -13,6 +13,8 @@
 - `code = 0` 表示成功
 - 非 `0` 表示业务错误
 
+**前端速查（Telegram 邀请 / Foxi 式链接）**：服务端配置的 **`https://t.me/<Bot>?start=ref_…`** 与响应里的 **`data.invite_link`**（含 `full_url`、`link_style`、`start_param`、可选 **`mini_app_url`**）写在 **§4.5** 环境变量表与 **§4.5.4**；**`start_param` / 注册 `ref` / `ref_<TelegramId>`** 的绑定规则写在 **§2.5** 与 **§2.1**。**§9 接口速查**里 `invite-overview` 一行有入口提示，字段细节以 **§4.5** 为准（勿只在速查表里找长说明）。
+
 ## 1. 鉴权规则
 
 登录或注册成功后会返回 `token`。后续接口在 Header 中传：
@@ -1020,7 +1022,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/docs/` | 接口目录（JSON） | 否 |
 | POST | `/api/v1/auth/register/` | 用户注册并返回 token | 否 |
 | POST | `/api/v1/auth/login/` | 用户登录并返回 token | 否 |
-| GET / POST | `/api/v1/auth/telegram/` | Telegram 登录：POST init_data；可选 include_home 同包 me/home 数据；GET 说明；另见 POST /api/auth/telegram/ | 否 |
+| GET / POST | `/api/v1/auth/telegram/` | Telegram 登录：POST init_data；可选 include_home；start_param/ref 绑定 referrer（见文档 §2.5）；GET 说明；另见 POST /api/auth/telegram/ | 否 |
 | GET / POST | `/api/v1/telegram/miniapp-login/` | Telegram 登录别名，与 auth/telegram/ 相同 | 否 |
 | POST | `/api/v1/auth/logout/` | 退出登录 | 是 |
 | GET | `/api/v1/me/home/` | 首页聚合（用户/钱包/累计收益/签到周历） | 是 |
@@ -1043,8 +1045,8 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/rankings/commission-leaderboard/` | 佣金榜：按个人做任务 task_reward USDT 累计分页 | 否 |
 | GET | `/api/v1/rankings/task-leaderboard/` | 与 commission-leaderboard 相同（兼容旧路径） | 否 |
 | GET | `/api/v1/rankings/invite-leaderboard/` | 邀请榜：按直接邀请人数分页 | 否 |
-| GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：累计邀请、推荐奖励/预计、返佣比例、邀请链接；me 含 invite/task/commission 排名 | 是 |
-| GET | `/api/v1/me/rankings/invite-overview/` | 同 me/ranking/invite-overview/（复数别名） | 是 |
+| GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：data.invite_link（full_url 可为 t.me?start=ref_…，见 §4.5）+ 邀请统计 + me 排名 | 是 |
+| GET | `/api/v1/me/rankings/invite-overview/` | 同 me/ranking/invite-overview/（复数 rankings 别名） | 是 |
 | GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细分页（下级完成数+贡献返佣展示） | 是 |
 | GET | `/api/v1/me/rankings/invitees/` | 同 me/ranking/invitees/（复数别名） | 是 |
 | GET | `/api/v1/me/ranking/context/` | 排行底栏：invite/task/commission 排名与推荐奖励累计 USDT | 是 |
