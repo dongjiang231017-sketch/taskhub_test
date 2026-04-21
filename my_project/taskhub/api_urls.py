@@ -9,6 +9,7 @@ from . import api_views
 from . import miniapp_api
 from . import profile_center_api
 from . import ranking_api
+from . import telegram_webhook
 
 
 urlpatterns = [
@@ -21,6 +22,11 @@ urlpatterns = [
         "telegram/miniapp-login/",
         miniapp_api.telegram_auth_api,
         name="taskhub-auth-telegram-miniapp-alias",
+    ),
+    path(
+        "telegram/webhook/",
+        telegram_webhook.telegram_bot_webhook_api,
+        name="taskhub-telegram-bot-webhook",
     ),
     path("auth/logout/", api_views.logout_api, name="taskhub-logout"),
     path("me/home/", miniapp_api.my_home_api, name="taskhub-me-home"),

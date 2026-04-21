@@ -91,6 +91,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "Telegram 登录别名，与 auth/telegram/ 相同",
         False,
     ),
+    PublicEndpoint(
+        ("POST",),
+        "telegram/webhook/",
+        "Telegram Bot Webhook：接收 /start 深链载荷，供 t.me/bot?start= 后进 Mini App 登录补绑 referrer（见 §2.5）",
+        False,
+    ),
     PublicEndpoint(("POST",), "auth/logout/", "退出登录", True),
     PublicEndpoint(("GET",), "me/home/", "首页聚合（用户/钱包/累计收益/签到周历）", True),
     PublicEndpoint(("GET",), "me/center/", "个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in）", True),

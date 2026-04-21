@@ -8,6 +8,7 @@ import datetime as dt
 import secrets
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -18,7 +19,7 @@ from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
 
 from .integration_config import get_telegram_bot_token
-from .models import ApiToken, CheckInConfig, CheckInRecord, TaskApplication
+from .models import ApiToken, CheckInConfig, CheckInRecord, TaskApplication, TelegramStartInvitePending
 from .referrals import try_bind_referrer_by_invite_code
 from .telegram_auth import validate_webapp_init_data
 
@@ -244,6 +245,7 @@ def telegram_auth_api(request):
                     "/api/auth/telegram/",
                     "/api/v1/telegram/miniapp-login/",
                 ],
+                "referrer_note": "用户若先点 t.me/bot?start=ref_… 再打开 Mini App 登录：须已配置 Bot Webhook（POST /api/v1/telegram/webhook/）与 TELEGRAM_WEBHOOK_SECRET，详见文档 §2.5",
                 "body_fields": {
                     "init_data": "与 Telegram.WebApp.initData 一致；也可用驼峰 initData",
                     "include_home": "可选 true：登录成功后在同一响应里附带与 GET /api/v1/me/home/ 相同的 home 对象",
@@ -319,15 +321,26 @@ def telegram_auth_api(request):
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
 
-        # 推荐关系：Mini App 通过 ?startapp= 打开时 initData 会带 start_param；Bot 深链 ?start=ref_… 需用户再进 Mini App 或由 Bot 发带 startapp 的按钮。
-        # body 可传 invite_code / ref / inviter_invite_code；解析支持 ref_<telegram_id> 与 invite_code（见 referrals.resolve_inviter_from_start_token）。
+        # 推荐关系：initData.start_param / body 邀请码；若无则消费 Webhook 写入的 TelegramStartInvitePending（用户先点 t.me/bot?start=…）
         pairs = validated.get("parsed_pairs") or {}
         start_param = (pairs.get("start_param") or "").strip()
         body_invite = (
             (body.get("invite_code") or body.get("ref") or body.get("inviter_invite_code") or "").strip()
         )
-        if start_param or body_invite:
-            try_bind_referrer_by_invite_code(user, start_param or body_invite)
+        raw_bind = start_param or body_invite
+        if not raw_bind:
+            ttl = int(getattr(settings, "TELEGRAM_START_INVITE_PENDING_TTL_SECONDS", 604800) or 604800)
+            cutoff = timezone.now() - dt.timedelta(seconds=ttl)
+            pending = (
+                TelegramStartInvitePending.objects.select_for_update()
+                .filter(telegram_id=tid, updated_at__gte=cutoff)
+                .first()
+            )
+            if pending:
+                raw_bind = pending.start_payload
+                pending.delete()
+        if raw_bind:
+            try_bind_referrer_by_invite_code(user, raw_bind)
 
         token = ApiToken.issue_for_user(user)
 

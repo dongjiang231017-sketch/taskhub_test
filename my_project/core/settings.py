@@ -46,6 +46,12 @@ TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "").strip().lstr
 TELEGRAM_MINI_APP_SHORT_NAME = os.environ.get("TELEGRAM_MINI_APP_SHORT_NAME", "").strip()
 # ?start= 参数前缀，默认 ref_（与常见「ref_+TelegramId」一致）
 TELEGRAM_INVITE_START_PREFIX = os.environ.get("TELEGRAM_INVITE_START_PREFIX", "ref_").strip() or "ref_"
+# Bot Webhook：与 setWebhook 时 secret_token 一致；非空则校验请求头 X-Telegram-Bot-Api-Secret-Token（强烈建议生产必配）
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip()
+# 用户点 t.me/bot?start= 后未立刻登录时，待绑定载荷保留时长（秒）
+TELEGRAM_START_INVITE_PENDING_TTL_SECONDS = int(
+    os.environ.get("TELEGRAM_START_INVITE_PENDING_TTL_SECONDS", str(7 * 24 * 3600))
+)
 
 # Twitter / X API v2（只读 Bearer）：用于「绑定推特 + 校验转发/关注」类必做任务
 # 优先读 core/twitter_secrets.py（复制 twitter_secrets.example.py 为 twitter_secrets.py 后填写）；否则读环境变量 TWITTER_BEARER_TOKEN

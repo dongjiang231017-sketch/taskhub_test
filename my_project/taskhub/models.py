@@ -419,6 +419,26 @@ class CheckInRecord(models.Model):
         return f"{self.user_id} {self.on_date}"
 
 
+class TelegramStartInvitePending(models.Model):
+    """
+    用户通过 https://t.me/<Bot>?start=<payload> 打开 Bot 并点「启动」后，
+    Telegram 会把 payload 随 /start 推给 Webhook；在用户随后 POST Mini App 登录前暂存于此，
+    以便 initData 无 start_param 时仍能绑定 referrer。
+    """
+
+    telegram_id = models.BigIntegerField(unique=True, db_index=True, verbose_name="Telegram 用户 ID")
+    start_payload = models.CharField(max_length=64, verbose_name="start 参数", db_comment="与 deep link ?start= 一致，最长 64")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "taskhub_telegram_start_invite_pending"
+        verbose_name = "Telegram /start 待绑定邀请"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f"tg:{self.telegram_id} {self.start_payload!r}"
+
+
 class IntegrationSecretConfig(models.Model):
     """
     全局第三方 API 密钥（后台仅维护一条）。

@@ -113,12 +113,35 @@ Authorization: Bearer <token>
 
 - `TELEGRAM_BOT_TOKEN`：与 Mini App 绑定的 **BotFather 机器人 Token**（与校验 `initData` 用同一机器人）
 
+**服务端环境变量**（选填；用于 **`https://t.me/<Bot>?start=ref_…`** 先进 Bot 再进 Mini App 仍能绑推荐人）：
+
+- **`TELEGRAM_WEBHOOK_SECRET`**：与调用 Telegram **`setWebhook`** 时传入的 **`secret_token`** 完全一致；**非空**时，**`POST /api/v1/telegram/webhook/`** 必须带请求头 **`X-Telegram-Bot-Api-Secret-Token: <同一串>`**，否则返回 **403**。**生产环境强烈建议必配**，否则任意人可向该 URL 灌伪造载荷。
+- **`TELEGRAM_START_INVITE_PENDING_TTL_SECONDS`**：默认 **`604800`**（7 天）。仅在此秒数内用户曾在 Bot 私聊触发过带参数的 **`/start`**，随后的 Mini App 登录才会消费该待绑定记录。
+
 **行为说明**：
 
 1. 使用 [Telegram Web Apps 校验规则](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) 校验 `init_data` 的 `hash` 与 `auth_date`（默认允许 86400 秒内）。
 2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户会分配 `username`（如 `tg123456789`），`phone` 为空，并自动创建钱包。
-3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，服务端会依次读取 **`initData` 解析出的 `start_param`**（用户通过 **`https://t.me/<BotUsername>/<MiniAppShortName>?startapp=…`** 打开 Mini App 时，Telegram 把载荷写入签名字段 **`start_param`**）以及 POST body 中的 **`invite_code` / `ref` / `inviter_invite_code`**；解析规则与注册一致：**`invite_code`**、**`ref_<TelegramId>`**（前缀可配置，默认 `ref_`）、或 **纯数字 Telegram ID**（按 **`FrontendUser.telegram_id`** 查邀请人；邀请码仍最长 10 位）。已绑定过的账号**不会**被覆盖。无效或指向自己时静默跳过。
+3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，按顺序尝试：
+   - **`initData` 内的 `start_param`**（用户通过 **`https://t.me/<Bot>/<MiniAppShortName>?startapp=…`** 打开 Mini App 时由 Telegram 写入）；
+   - POST body 的 **`invite_code` / `ref` / `inviter_invite_code`**；
+   - **Bot Webhook 暂存**：用户曾用 **`https://t.me/<Bot>?start=<payload>`** 打开 Bot 并在私聊中发送 **`/start <payload>`**（Telegram 将更新推送到 **`POST /api/v1/telegram/webhook/`**，服务端按 **`Telegram user id`** 暂存 `payload`）；若前两项均为空，且该暂存在 TTL 内，则**消费一条**并尝试绑定。实现此条须：**HTTPS 公网可访问的 Webhook URL**、已执行 **`python manage.py telegram_set_webhook`**（或等价调用 Telegram **`setWebhook`**）、部署后已 **`migrate`** 创建表 **`taskhub_telegram_start_invite_pending`**。
+   - 载荷解析与 **§2.1** 一致：**`invite_code`**、**`ref_<TelegramId>`**（默认前缀 `ref_`）、或 **纯数字 Telegram ID**。已绑定过的账号**不会**被覆盖；无效或自己邀请自己时静默跳过。
 4. 签发/刷新 `ApiToken` 并返回（与手机号登录相同结构）。
+
+**运维：注册 Webhook（复制即用）**
+
+1. 生成密钥并写入服务器环境（与下面 `--secret` 用**同一值**）：例如 `export TELEGRAM_WEBHOOK_SECRET="$(openssl rand -hex 24)"`。
+2. 在项目虚拟环境里执行（把域名换成你的 HTTPS 站点，路径勿改）：
+
+   ```bash
+   python manage.py telegram_set_webhook --url https://你的域名/api/v1/telegram/webhook/
+   ```
+
+   若未把 `TELEGRAM_WEBHOOK_SECRET` 写进环境，可显式：`--secret '<与 setWebhook 一致的串>'`。
+3. 确保 **Nginx**（或反代）把 **`POST /api/v1/telegram/webhook/`** 转到 Gunicorn/Django，且 **TLS 证书有效**（Telegram 只接受 **https**）。
+4. 部署代码后执行 **`python manage.py migrate`**。
+5. 自测：用手机点 **`https://t.me/<Bot>?start=ref_<邀请人tg数字id>`** → 在 Telegram 里对 Bot 点 **「启动」**（会发 `/start ref_…`）→ 再打开 Mini App 并 **`POST /api/v1/auth/telegram/`**；此时即使 `initData` 无 `start_param`，也应能绑定 **`referrer`**（邀请人须在库中有对应 **`telegram_id`**）。
 
 **业务错误（未自动注册时优先核对）**
 
@@ -664,6 +687,8 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | --- | --- |
 | `TELEGRAM_BOT_USERNAME` | Bot 用户名（**无** `@`）。若配置，**优先**生成 Foxi 式链接：`https://t.me/{username}?start={TELEGRAM_INVITE_START_PREFIX}{邀请人 telegram_id 或 invite_code}`（邀请人已绑定 Telegram 时用数字 id，否则用邀请码）。 |
 | `TELEGRAM_INVITE_START_PREFIX` | 默认 `ref_`；与 `?start=` 拼接在 id/码前。 |
+| `TELEGRAM_WEBHOOK_SECRET` | 与 **`setWebhook`** 的 **`secret_token`** 一致；非空则校验 **`POST /api/v1/telegram/webhook/`** 请求头 **`X-Telegram-Bot-Api-Secret-Token`**。详见 **§2.5**。 |
+| `TELEGRAM_START_INVITE_PENDING_TTL_SECONDS` | 默认 `604800`（7 天）；Webhook 暂存邀请载荷的有效期。 |
 | `TELEGRAM_MINI_APP_SHORT_NAME` | 可选；**接口不返回**第二条 URL。与 `TELEGRAM_BOT_USERNAME` 同时配置时，若产品需要「直接打开 Mini App 并带邀请码」，请前端或运营按固定格式自行拼接：`https://t.me/{TELEGRAM_BOT_USERNAME}/{TELEGRAM_MINI_APP_SHORT_NAME}?startapp={data.invite_link.invite_code}`（与 `POST /api/v1/auth/telegram/` 的 `start_param` 解析一致）。 |
 | `INVITE_LINK_BASE_URL` | **未**配置 `TELEGRAM_BOT_USERNAME` 时使用：邀请落地页前缀，**勿**尾斜杠。例 `https://task.example.com`；未配置时 `invite_link.full_url` 为当前站点绝对路径 `/invite/{invite_code}`。 |
 | `INVITE_COMMISSION_RATE` | 默认 `0.10`；用于「预计收益」估算与 `commission.label` 文案。 |
@@ -1032,6 +1057,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | POST | `/api/v1/auth/login/` | 用户登录并返回 token | 否 |
 | GET / POST | `/api/v1/auth/telegram/` | Telegram 登录：POST init_data；可选 include_home；start_param/ref 绑定 referrer（见文档 §2.5）；GET 说明；另见 POST /api/auth/telegram/ | 否 |
 | GET / POST | `/api/v1/telegram/miniapp-login/` | Telegram 登录别名，与 auth/telegram/ 相同 | 否 |
+| POST | `/api/v1/telegram/webhook/` | Telegram Bot Webhook：接收 /start 深链载荷，供 t.me/bot?start= 后进 Mini App 登录补绑 referrer（见 §2.5） | 否 |
 | POST | `/api/v1/auth/logout/` | 退出登录 | 是 |
 | GET | `/api/v1/me/home/` | 首页聚合（用户/钱包/累计收益/签到周历） | 是 |
 | GET | `/api/v1/me/center/` | 个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in） | 是 |

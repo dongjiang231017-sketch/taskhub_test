@@ -40,6 +40,10 @@ DATABASES = {
 # CSRF_TRUSTED_ORIGINS = ["http://8.219.124.25"]
 # 并确认 Nginx 已传 X-Forwarded-Proto（HTTPS 站点一般为 https）
 
+# Telegram Bot Webhook（先点 t.me/bot?start=ref_… 再打开 Mini App 时补绑推荐人；见 docs/taskhub_api.md §2.5）
+# TELEGRAM_WEBHOOK_SECRET=与 python manage.py telegram_set_webhook 传入的 secret_token 一致
+# TELEGRAM_START_INVITE_PENDING_TTL_SECONDS=604800
+
 # 排行 / 邀请（可选，不配则用 settings.py 默认值）
 # Foxi 式邀请链接：生产务必配置 Bot 用户名（无 @），否则 invite_link.full_url 仍是浏览器打开的 https://你的域名/invite/...
 # TELEGRAM_BOT_USERNAME=YourBot
