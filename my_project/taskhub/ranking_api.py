@@ -172,6 +172,7 @@ def _user_public_card(u: FrontendUser) -> dict:
     return {
         "id": u.id,
         "username": u.username,
+        "telegram_username": u.telegram_username,
         "membership_level": u.membership_level,
         "avatar_url": None,
     }
@@ -278,6 +279,7 @@ def rankings_invite_leaderboard_api(request):
 
     return api_response(
         {
+            "leaderboard_type": "platform_invite_count",
             "items": items,
             "pagination": {"page": page, "page_size": page_size, "total": total, "has_more": offset + len(items) < total},
         }

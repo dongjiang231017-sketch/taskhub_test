@@ -182,7 +182,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "与 commission-leaderboard 相同（兼容旧路径）",
         False,
     ),
-    PublicEndpoint(("GET",), "rankings/invite-leaderboard/", "邀请榜：按直接邀请人数分页", False),
+    PublicEndpoint(
+        ("GET",),
+        "rankings/invite-leaderboard/",
+        "全站邀请榜：按直接邀请人数降序分页（可不登录）；勿与 me/ranking/invitees/ 混淆",
+        False,
+    ),
     PublicEndpoint(
         ("GET",),
         "me/ranking/invite-overview/",
@@ -195,7 +200,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "同 me/ranking/invite-overview/（复数 rankings 别名）",
         True,
     ),
-    PublicEndpoint(("GET",), "me/ranking/invitees/", "我的邀请明细分页（下级完成数+贡献返佣展示）", True),
+    PublicEndpoint(
+        ("GET",),
+        "me/ranking/invitees/",
+        "我的邀请明细（当前用户下级列表+返佣展示），不是全站邀请榜",
+        True,
+    ),
     PublicEndpoint(("GET",), "me/rankings/invitees/", "同 me/ranking/invitees/（复数别名）", True),
     PublicEndpoint(
         ("GET",),

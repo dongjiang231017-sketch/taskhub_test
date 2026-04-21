@@ -15,6 +15,8 @@
 
 **前端速查（Telegram 邀请）**：排行 **`data.invite_link.full_url`** 即复制用链接。若同时配置了 **`TELEGRAM_BOT_USERNAME`** 与 **`TELEGRAM_MINI_APP_SHORT_NAME`**，则为 **`https://t.me/<bot>/<短名>?startapp=…`**（直接进 Mini App，`initData` 带 `start_param`）；若只配了 Bot 用户名为 **`https://t.me/<bot>?start=…`**；若仍为 **`http(s)://你的域名/invite/...`**，说明未配 **`TELEGRAM_BOT_USERNAME`**。详见 **§4.5**；绑定规则见 **§2.5**、**§2.1**。
 
+**前端速查（邀请榜 Tab）**：全站「谁邀请的人最多」用 **`GET /api/v1/rankings/invite-leaderboard/`**（§4.5.3）；**不要**请求 **`GET /api/v1/me/ranking/invitees/`**（那是「我的邀请明细」下级列表，§4.5.5）。
+
 ## 1. 鉴权规则
 
 登录或注册成功后会返回 `token`。后续接口在 Header 中传：
@@ -729,12 +731,14 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 `data.leaderboard_type` 固定为 `task_commission_usdt`。`data.items[]`：`rank`、`id`、`username`、`membership_level`、`avatar_url`（暂 `null`）、**`task_commission_usdt`**（该用户钱包 **`task_reward`** USDT 正数合计）、**`completed_tasks`**（已录用报名数，便于 UI 副文案）。`pagination` 含 `has_more`。
 
-#### 4.5.3 邀请榜
+#### 4.5.3 邀请榜（全站：谁邀请的人最多）
 
 - `GET /api/v1/rankings/invite-leaderboard/`
-- **可不登录**
+- **可不登录**；**全站**按「直接邀请且下级账号为启用 `status=true`」的人数降序排行。
 
-参数同 **§4.5.2**。`items[]`：`rank`、`invited_count`（**有效**下级 `status=true` 人数）、`id`、`username`、`membership_level`、`avatar_url`。
+**前端「邀请榜」Tab 必须用本接口**，展示列建议：**名次 `rank`**、**用户 `username`**（可选副文案 **`telegram_username`**）、**邀请人数 `invited_count`**。**不要**用 **§4.5.5** 的 `me/ranking/invitees/`：那是「**我**邀请了哪些人」的明细（含任务数、返佣分摊），与全站排行不是同一数据。
+
+参数同 **§4.5.2**。`data.leaderboard_type` 固定为 **`platform_invite_count`**。`data.items[]`：`rank`、`invited_count`、`id`、`username`、**`telegram_username`**（可能 `null`）、`membership_level`、`avatar_url`（暂 `null`）。
 
 #### 4.5.4 邀请统计区 + 我的排名摘要（合并）
 
@@ -1077,10 +1081,10 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/rankings/platform-stats/` | 排行页全站统计：任务总数、任务奖励 USDT 发放合计、用户数、运营天数 | 否 |
 | GET | `/api/v1/rankings/commission-leaderboard/` | 佣金榜：按个人做任务 task_reward USDT 累计分页 | 否 |
 | GET | `/api/v1/rankings/task-leaderboard/` | 与 commission-leaderboard 相同（兼容旧路径） | 否 |
-| GET | `/api/v1/rankings/invite-leaderboard/` | 邀请榜：按直接邀请人数分页 | 否 |
+| GET | `/api/v1/rankings/invite-leaderboard/` | 全站邀请榜：按直接邀请人数降序分页（可不登录）；勿与 me/ranking/invitees/ 混淆 | 否 |
 | GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：data.invite_link（full_url 可为 t.me?start=ref_…，见 §4.5）+ 邀请统计 + me 排名 | 是 |
 | GET | `/api/v1/me/rankings/invite-overview/` | 同 me/ranking/invite-overview/（复数 rankings 别名） | 是 |
-| GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细分页（下级完成数+贡献返佣展示） | 是 |
+| GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细（当前用户下级列表+返佣展示），不是全站邀请榜 | 是 |
 | GET | `/api/v1/me/rankings/invitees/` | 同 me/ranking/invitees/（复数别名） | 是 |
 | GET | `/api/v1/me/ranking/context/` | 排行底栏：invite/task/commission 排名与推荐奖励累计 USDT | 是 |
 | GET | `/api/v1/me/rankings/context/` | 同 me/ranking/context/（复数别名） | 是 |
