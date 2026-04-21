@@ -20,27 +20,29 @@ def _strip_invite_start_prefix(raw: str) -> str:
     return s.strip()
 
 
-def resolve_inviter_from_start_token(raw_code: str | None, *, exclude_user_id: int) -> FrontendUser | None:
+def resolve_inviter_from_start_token(
+    raw_code: str | None, *, exclude_user_id: int | None = None
+) -> FrontendUser | None:
     """
     将 start_param / body 里的邀请载荷解析为「邀请人」用户。
     支持：ref_<telegram_id>、纯数字 Telegram ID、invite_code（不区分大小写，最长 10 位）。
+    exclude_user_id：注册前可省略；已存在用户绑定时传入自身 pk，避免绑到自己。
     """
     if not raw_code:
         return None
     token = _strip_invite_start_prefix(str(raw_code))
     if len(token) < 4:
         return None
+    qs = FrontendUser.objects.all()
+    if exclude_user_id is not None:
+        qs = qs.exclude(pk=exclude_user_id)
     # 纯数字：按 Telegram user id 查找（与 https://t.me/bot?start=ref_6702754957 一类链接一致）
     if token.isdigit() and 5 <= len(token) <= 15:
-        ref = FrontendUser.objects.filter(telegram_id=int(token)).exclude(pk=exclude_user_id).first()
+        ref = qs.filter(telegram_id=int(token)).first()
         if ref:
             return ref
     # 邀请码
-    return (
-        FrontendUser.objects.filter(invite_code__iexact=token[:10])
-        .exclude(pk=exclude_user_id)
-        .first()
-    )
+    return qs.filter(invite_code__iexact=token[:10]).first()
 
 
 def try_bind_referrer_by_invite_code(user: FrontendUser, raw_code: str | None) -> bool:

@@ -52,7 +52,7 @@ Authorization: Bearer <token>
 }
 ```
 
-- **`invite_code`**（可选，也可用 **`ref`**）：与邀请人的 **`FrontendUser.invite_code`** 一致时，新用户 **`referrer`** 会写入该邀请人；无效码则忽略（不报错）。
+- **`invite_code`**（可选，也可用 **`ref`**）：可为邀请人的 **`invite_code`**，或与 Bot 深链一致的 **`ref_<TelegramId>`** / 纯数字 Telegram ID；匹配则写入 **`referrer`**；无效则忽略（不报错）。勿对整段载荷做 10 字截断。
 
 ### 2.2 登录
 
@@ -115,7 +115,7 @@ Authorization: Bearer <token>
 
 1. 使用 [Telegram Web Apps 校验规则](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) 校验 `init_data` 的 `hash` 与 `auth_date`（默认允许 86400 秒内）。
 2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户会分配 `username`（如 `tg123456789`），`phone` 为空，并自动创建钱包。
-3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，服务端会依次读取 **`initData` 解析出的 `start_param`**（用户通过 **`https://t.me/<BotUsername>/<MiniAppShortName>?startapp=<邀请码>`** 打开 Mini App 时，Telegram 会把 `<邀请码>` 放入签名字段 **`start_param`**）以及 POST body 中的 **`invite_code` / `ref` / `inviter_invite_code`**；与某位用户的 **`invite_code`**（不区分大小写，最长 10 位）匹配则写入 **`referrer`**。已绑定过的账号**不会**被覆盖。邀请码无效或指向自己时静默跳过。
+3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，服务端会依次读取 **`initData` 解析出的 `start_param`**（用户通过 **`https://t.me/<BotUsername>/<MiniAppShortName>?startapp=…`** 打开 Mini App 时，Telegram 把载荷写入签名字段 **`start_param`**）以及 POST body 中的 **`invite_code` / `ref` / `inviter_invite_code`**；解析规则与注册一致：**`invite_code`**、**`ref_<TelegramId>`**（前缀可配置，默认 `ref_`）、或 **纯数字 Telegram ID**（按 **`FrontendUser.telegram_id`** 查邀请人；邀请码仍最长 10 位）。已绑定过的账号**不会**被覆盖。无效或指向自己时静默跳过。
 4. 签发/刷新 `ApiToken` 并返回（与手机号登录相同结构）。
 
 **业务错误（未自动注册时优先核对）**
@@ -710,7 +710,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 `data.invite`：`total_invited`、`referral_credited_usdt`（当前用户钱包 **`change_type=reward`** 且 USDT 正数累计）、`referral_estimated_display_usdt`（在已入账推荐奖励基础上，叠加「下级 `task_reward` USDT 累计 × `INVITE_COMMISSION_RATE`」的**展示用**估算）、`commission`（`decimal` / `percent` / `label`）、`note`（字段含义说明）。
 
-`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）、`link_style`（`telegram_bot_start` / `custom_base` / `site_absolute` / `site_path`）、`start_param`（仅 Bot 深链形态时有，即 `?start=` 的值）。若配置了 `TELEGRAM_MINI_APP_SHORT_NAME`，另有 **`mini_app_url`**（直接打开 Mini App 并带 `startapp=`）。
+`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）、`link_style`（`telegram_bot_start` / `custom_base` / `site_absolute`）、`start_param`（仅 Bot 深链形态时有，即 `?start=` 的值）。若配置了 `TELEGRAM_MINI_APP_SHORT_NAME`，另有 **`mini_app_url`**（直接打开 Mini App 并带 `startapp=`）。
 
 `data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（按**已录用任务数**的全站名次：`rank` / `completed_tasks` / `surpassed_users_percent`）、**`commission`**（按 **`task_reward` USDT 累计** 的佣金榜名次：`rank` / `task_commission_usdt` / `surpassed_users_percent`）、`total_contribution_usdt`（推荐奖励 USDT 累计，与 `referral_credited_usdt` 一致，底栏「总贡献」语境）。
 

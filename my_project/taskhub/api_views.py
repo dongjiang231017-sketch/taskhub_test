@@ -38,6 +38,7 @@ from .telegram_group_client import user_is_member_of_chat
 from .tiktok_apify_client import apify_tiktok_configured, user_reposted_video_via_apify
 from .tiktok_client import extract_tiktok_video_id_from_url
 from .youtube_client import channel_about_contains_proof, normalize_youtube_channel_identifier
+from .referrals import resolve_inviter_from_start_token
 
 
 def api_response(data=None, message="ok", code=0, status=200):
@@ -655,10 +656,8 @@ def register_api(request):
     if FrontendUser.objects.filter(username=username).exists():
         return api_error("用户名已被占用", code=4007, status=409)
 
-    ref_raw = (body.get("invite_code") or body.get("ref") or "").strip()[:10]
-    referrer_obj = None
-    if ref_raw:
-        referrer_obj = FrontendUser.objects.filter(invite_code__iexact=ref_raw).first()
+    ref_raw = (body.get("invite_code") or body.get("ref") or "").strip()
+    referrer_obj = resolve_inviter_from_start_token(ref_raw) if ref_raw else None
 
     with transaction.atomic():
         user = FrontendUser.objects.create(
