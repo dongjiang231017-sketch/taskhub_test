@@ -8,6 +8,7 @@ from django.urls import path
 from . import api_views
 from . import miniapp_api
 from . import profile_center_api
+from . import ranking_api
 
 
 urlpatterns = [
@@ -36,6 +37,24 @@ urlpatterns = [
     path("me/check-in/make-up/", miniapp_api.my_check_in_makeup_api, name="taskhub-me-check-in-makeup"),
     path("tasks/mandatory/", miniapp_api.mandatory_tasks_api, name="taskhub-mandatory-tasks"),
     path("tasks/center/", api_views.tasks_center_api, name="taskhub-tasks-center"),
+    path("rankings/platform-stats/", ranking_api.rankings_platform_stats_api, name="taskhub-rankings-platform-stats"),
+    path(
+        "rankings/task-leaderboard/",
+        ranking_api.rankings_task_leaderboard_api,
+        name="taskhub-rankings-task-leaderboard",
+    ),
+    path(
+        "rankings/invite-leaderboard/",
+        ranking_api.rankings_invite_leaderboard_api,
+        name="taskhub-rankings-invite-leaderboard",
+    ),
+    path(
+        "me/ranking/invite-overview/",
+        ranking_api.me_ranking_invite_overview_api,
+        name="taskhub-me-ranking-invite-overview",
+    ),
+    path("me/ranking/invitees/", ranking_api.me_ranking_invitees_api, name="taskhub-me-ranking-invitees"),
+    path("me/ranking/context/", ranking_api.me_ranking_context_api, name="taskhub-me-ranking-context"),
     path("me/profile/", api_views.my_profile_api, name="taskhub-profile"),
     path("me/published-tasks/", api_views.my_published_tasks_api, name="taskhub-my-published-tasks"),
     path("me/applied-tasks/", api_views.my_applied_tasks_api, name="taskhub-my-applied-tasks"),

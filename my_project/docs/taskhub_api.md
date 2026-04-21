@@ -29,7 +29,7 @@ Authorization: Bearer <token>
 | 注册 / 手机号登录 | `POST /api/v1/auth/register/`、`POST /api/v1/auth/login/` | 否 |
 | **Telegram 登录** | `POST /api/v1/auth/telegram/` 及 **§2.5** 所列兼容路径 | **否**（POST 登录时） |
 | 分类 / 任务列表等 | 见各章节标注「可不登录」的接口 | 按文档 |
-| **个人中心 / 签到 / 我的任务等** | `GET/POST /api/v1/me/...` | **是**（除登录外几乎全部要） |
+| **个人中心 / 排行 / 签到 / 我的任务等** | `GET/POST /api/v1/me/...`（含 **`/me/ranking/`**） | **是**（除登录外几乎全部要） |
 
 未带或 token 错误时：**HTTP 401**，`code` 多为 **4010**，`message` 一般为「未登录或 token 无效」。服务端日志里可能出现 **`Unauthorized: /api/v1/me/center/`** 字样，**属于预期**，不是接口缺失；请在前端确认请求头里已拼上 **`Authorization: Bearer ` + 登录接口返回的 `data.token`**。
 
@@ -647,6 +647,81 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 - `verification_mode`
 - `interaction_config`
 
+### 4.5 排行模块（排行榜页）
+
+对接产品「排行」Tab：全站统计、任务榜、邀请榜、邀请统计与明细、底栏「我的」摘要。金额字段均为 **USDT 字符串**（两位小数）；前端可映射为 ¥ 展示。
+
+**环境变量 / `settings`（可选）**
+
+| 变量 | 说明 |
+| --- | --- |
+| `INVITE_LINK_BASE_URL` | 邀请落地页前缀，**勿**尾斜杠。例：`https://t.me/YourBot?startapp=`（Mini App）或 `https://task.example.com`。未配置时 `invite_link.full_url` 为当前站点绝对路径 `/invite/{invite_code}`。 |
+| `INVITE_COMMISSION_RATE` | 默认 `0.10`；用于「预计收益」估算与 `commission.label` 文案。 |
+| `PLATFORM_STATS_ANCHOR_DATE` | `YYYY-MM-DD`，全站「运营天数」起点；不设则取库内最早用户/任务创建日。 |
+
+#### 4.5.1 全站统计（顶部四卡）
+
+- `GET /api/v1/rankings/platform-stats/`
+- **可不登录**
+
+`data`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `total_tasks` | 任务总数（不含 `draft`） |
+| `total_rewards_issued_usdt` | 全站 **`task_reward`** 账变 USDT 正数合计（备注不含 `TH Coin`） |
+| `total_users` | 启用用户 `status=true` 人数 |
+| `operating_days` | 运营天数（见上表锚点） |
+| `currency_display_hint` | 提示前端可自行映射 ¥ |
+
+#### 4.5.2 任务榜
+
+- `GET /api/v1/rankings/task-leaderboard/`
+- **可不登录**；带 Bearer 不改变排序，仅便于统一鉴权中间件
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `page` | 1 |  |
+| `page_size` | 20，最大 50 |  |
+
+`data.items[]`：`rank`、`id`、`username`、`membership_level`、`avatar_url`（暂 `null`）、`completed_tasks`（已录用报名数）。`pagination` 含 `has_more`。
+
+#### 4.5.3 邀请榜
+
+- `GET /api/v1/rankings/invite-leaderboard/`
+- **可不登录**
+
+参数同 **§4.5.2**。`items[]`：`rank`、`invited_count`（**有效**下级 `status=true` 人数）、`id`、`username`、`membership_level`、`avatar_url`。
+
+#### 4.5.4 邀请统计区 + 我的排名摘要（合并）
+
+- `GET /api/v1/me/ranking/invite-overview/`
+- 需要 Bearer Token
+
+`data.invite`：`total_invited`、`referral_credited_usdt`（当前用户钱包 **`change_type=reward`** 且 USDT 正数累计）、`referral_estimated_display_usdt`（在已入账推荐奖励基础上，叠加「下级 `task_reward` USDT 累计 × `INVITE_COMMISSION_RATE`」的**展示用**估算）、`commission`（`decimal` / `percent` / `label`）、`note`（字段含义说明）。
+
+`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）。
+
+`data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（`rank` / `completed_tasks` / `surpassed_users_percent`）、`total_contribution_usdt`（与 `referral_credited_usdt` 一致，底栏「总贡献」）。
+
+#### 4.5.5 我的邀请明细分页
+
+- `GET /api/v1/me/ranking/invitees/`
+- 需要 Bearer Token
+
+| 参数 | 说明 |
+| --- | --- |
+| `page` / `page_size` | 同其它分页，最大 50 |
+
+`data`：`total_invited`、`items[]`（`id`、`username`、`membership_level`、`avatar_url`、`completed_tasks`、`contribution_commission_usdt`、`commission_label`、`joined_at`）、`pagination`、`commission_note`（**分摊展示**说明：按全下级已完成任务数占比分摊您钱包内推荐奖励 USDT，非链上真实分笔）。
+
+#### 4.5.6 排行底栏（仅我的条）
+
+- `GET /api/v1/me/ranking/context/`
+- 需要 Bearer Token
+
+`data`：`user`、`task`、`invite`、`total_contribution_usdt`。可与 **§4.5.1** 分请求组合，减轻单包体积。
+
 ## 5. 报名接口
 
 ### 5.1 报名任务
@@ -952,6 +1027,12 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/guides/{pk}/` | 新手指南：详情（body=富文本 HTML；video_url 优先本地上传地址） | 否 |
 | GET | `/api/v1/tasks/mandatory/` | 首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏 | 否 |
 | GET | `/api/v1/tasks/center/` | 任务中心：分类 Tab + 必做 + 可用；必做区剔除规则同 tasks/mandatory/ | 否 |
+| GET | `/api/v1/rankings/platform-stats/` | 排行页全站统计：任务总数、任务奖励 USDT 发放合计、用户数、运营天数 | 否 |
+| GET | `/api/v1/rankings/task-leaderboard/` | 任务榜：按已录用任务数分页 | 否 |
+| GET | `/api/v1/rankings/invite-leaderboard/` | 邀请榜：按直接邀请人数分页 | 否 |
+| GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：累计邀请、推荐奖励/预计展示、返佣比例、邀请链接、我的排名摘要 | 是 |
+| GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细分页（下级完成数+贡献返佣展示） | 是 |
+| GET | `/api/v1/me/ranking/context/` | 排行底栏：我的任务/邀请排名、超越比例、总贡献 USDT | 是 |
 | GET | `/api/v1/tasks/` | 任务列表（分页、筛选） | 否 |
 | POST | `/api/v1/tasks/` | 发布任务 | 是 |
 | GET | `/api/v1/tasks/{task_id}/` | 任务详情 | 否 |

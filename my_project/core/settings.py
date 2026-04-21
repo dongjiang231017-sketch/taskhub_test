@@ -90,6 +90,13 @@ WITHDRAW_MIN_USDT = Decimal(os.environ.get("WITHDRAW_MIN_USDT", "2.00"))
 WITHDRAW_FEE_USDT = Decimal(os.environ.get("WITHDRAW_FEE_USDT", "0.00"))
 TELEGRAM_COMMUNITY_URL = os.environ.get("TELEGRAM_COMMUNITY_URL", "").strip()
 
+# 排行 / 邀请：邀请落地页前缀（勿尾斜杠），如 https://t.me/YourBot?startapp= 或 https://task.example.com
+INVITE_LINK_BASE_URL = os.environ.get("INVITE_LINK_BASE_URL", "").strip()
+# 邀请返佣比例（用于「预计收益」估算与 UI 文案；与钱包 `reward` 入账无强制公式绑定）
+INVITE_COMMISSION_RATE = Decimal(os.environ.get("INVITE_COMMISSION_RATE", "0.10"))
+# 全站「运营天数」起点（YYYY-MM-DD）；不设则用库内最早用户/任务创建日
+PLATFORM_STATS_ANCHOR_DATE = os.environ.get("PLATFORM_STATS_ANCHOR_DATE", "").strip()
+
 # 非「传统悬赏 interaction=none」、非「必做账号绑定」类玩法：pending 超过该分钟数由 maintain_tasks 自动取消
 TASK_PENDING_APPLICATION_TIMEOUT_MINUTES = int(
     os.environ.get("TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", "30")

@@ -39,3 +39,8 @@ DATABASES = {
 # 若暂时用 http://公网IP 访问管理后台，须写完整来源，例如：
 # CSRF_TRUSTED_ORIGINS = ["http://8.219.124.25"]
 # 并确认 Nginx 已传 X-Forwarded-Proto（HTTPS 站点一般为 https）
+
+# 排行 / 邀请（可选，不配则用 settings.py 默认值）
+# INVITE_LINK_BASE_URL=https://t.me/YourBot?startapp=
+# INVITE_COMMISSION_RATE=0.10
+# PLATFORM_STATS_ANCHOR_DATE=2026-01-01
