@@ -121,7 +121,7 @@ Authorization: Bearer <token>
 **行为说明**：
 
 1. 使用 [Telegram Web Apps 校验规则](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) 校验 `init_data` 的 `hash` 与 `auth_date`（默认允许 86400 秒内）。
-2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户会分配 `username`（如 `tg123456789`），`phone` 为空，并自动创建钱包。
+2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户 **`username`** 优先取 Telegram **设置里的名字**（`initData` 内 `user.first_name` + `user.last_name`，与客户端「设置」页展示一致）；若无则取 **`user.username`（@ 名）**；再无则 `tg<数字ID>`。重名自动加 `_2` 等后缀。`phone` 为空，并自动创建钱包。曾用纯 @ 名或 `tg_` 前缀老规则注册的用户，下次登录在用户名未被占用时可升级为上述显示名。
 3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，按顺序尝试：
    - **`initData` 内的 `start_param`**（用户通过 **`https://t.me/<Bot>/<MiniAppShortName>?startapp=…`** 打开 Mini App 时由 Telegram 写入）；
    - POST body 的 **`invite_code` / `ref` / `inviter_invite_code`**；
@@ -161,17 +161,17 @@ Authorization: Bearer <token>
   "user": {
     "id": 1,
     "phone": null,
-    "username": "tg123456789",
+    "username": "大明西厂",
     "telegram_id": 123456789,
-    "telegram_username": "alice",
+    "telegram_username": "dmxc999",
     "membership_level": 1,
     "invite_code": "ABCD1234",
     "status": true,
     "created_at": "2026-04-15T12:00:00+08:00",
-    "telegram_first_name": "Alice"
+    "telegram_first_name": "大"
   },
   "home": {
-    "user": { "id": 1, "username": "tg123456789", "telegram_id": 123456789 },
+    "user": { "id": 1, "username": "大明西厂", "telegram_id": 123456789 },
     "wallet": { "usdt": "0.00", "th_coin": "0.00" },
     "stats": {
       "cumulative_earnings_usdt": "0.00",

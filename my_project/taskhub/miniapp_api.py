@@ -37,13 +37,32 @@ from .api_views import (
 logger = logging.getLogger(__name__)
 
 
-def _site_username_base_from_telegram(tg_username: str | None, telegram_id: int) -> str:
-    """站点用户名基底：优先 Telegram @名（仅字母数字下划线），否则 tg<数字ID>。"""
+def _telegram_display_name(tg: dict) -> str:
+    """Telegram 资料里展示的「名字」：first_name + last_name（与客户端设置页一致）。"""
+    fn = (tg.get("first_name") or "").strip()
+    ln = (tg.get("last_name") or "").strip()
+    parts = [p for p in (fn, ln) if p]
+    if not parts:
+        return ""
+    return " ".join(parts).strip()
+
+
+def _site_username_fallback_handle(tg_username: str | None, telegram_id: int) -> str:
+    """无显示名时：用 @handle（仅字母数字下划线），否则 tg<数字ID>。"""
     if tg_username:
         u = "".join(c for c in tg_username.strip() if c.isalnum() or c == "_").strip("_")
         if u:
             return u[:50]
     return f"tg{telegram_id}"[:50]
+
+
+def _site_username_base_from_telegram_profile(tg: dict, telegram_id: int) -> str:
+    """站点用户名基底：优先 Telegram 显示名，其次 @名，否则 tg<id>。"""
+    disp = _telegram_display_name(tg)
+    if disp:
+        return " ".join(disp.split())[:50]
+    un = (tg.get("username") or "").strip() or None
+    return _site_username_fallback_handle(un, telegram_id)
 
 
 def _local_today():
@@ -303,7 +322,7 @@ def telegram_auth_api(request):
     tg_username = (tg.get("username") or "").strip() or None
     first = (tg.get("first_name") or "").strip() or "User"
 
-    base_username = _site_username_base_from_telegram(tg_username, tid)
+    base_username = _site_username_base_from_telegram_profile(tg, tid)
     username = base_username
     suffix = 0
     while FrontendUser.objects.filter(username=username).exclude(telegram_id=tid).exists():
@@ -330,16 +349,17 @@ def telegram_auth_api(request):
             if tg_username and user.telegram_username != tg_username:
                 user.telegram_username = tg_username
                 to_save.append("telegram_username")
-            # 早期自动生成的 tg_xxx / tg数字ID，在 Telegram 有 @名时升级为与 TG 一致的站点用户名
-            if tg_username:
-                pref = _site_username_base_from_telegram(tg_username, tid)
-                legacy = user.username == f"tg{tid}" or (
-                    user.username.lower() == f"tg_{tg_username.lower()}"[:50]
-                )
-                if pref and pref != user.username and legacy:
-                    if not FrontendUser.objects.filter(username=pref).exclude(pk=user.pk).exists():
-                        user.username = pref
-                        to_save.append("username")
+            # 早期自动生成的 tg_xxx / tg数字 / 仅用 @ 名作用户名 → 升级为 Telegram「显示名」
+            pref = _site_username_base_from_telegram_profile(tg, tid)
+            handle_only = _site_username_fallback_handle(tg_username, tid)
+            legacy = user.username == f"tg{tid}" or (
+                tg_username
+                and user.username.lower() == f"tg_{tg_username.lower()}"[:50]
+            ) or (handle_only and user.username == handle_only)
+            if pref and pref != user.username and legacy:
+                if not FrontendUser.objects.filter(username=pref).exclude(pk=user.pk).exists():
+                    user.username = pref
+                    to_save.append("username")
             if to_save:
                 user.save(update_fields=to_save)
 
