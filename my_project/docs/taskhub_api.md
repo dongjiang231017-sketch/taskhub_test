@@ -702,6 +702,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 #### 4.5.4 邀请统计区 + 我的排名摘要（合并）
 
 - `GET /api/v1/me/ranking/invite-overview/`
+- **兼容**：`GET /api/v1/me/rankings/invite-overview/`（同义）
 - 需要 Bearer Token
 
 `data.invite`：`total_invited`、`referral_credited_usdt`（当前用户钱包 **`change_type=reward`** 且 USDT 正数累计）、`referral_estimated_display_usdt`（在已入账推荐奖励基础上，叠加「下级 `task_reward` USDT 累计 × `INVITE_COMMISSION_RATE`」的**展示用**估算）、`commission`（`decimal` / `percent` / `label`）、`note`（字段含义说明）。
@@ -713,6 +714,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 #### 4.5.5 我的邀请明细分页
 
 - `GET /api/v1/me/ranking/invitees/`
+- **兼容路径**（与上相同处理）：`GET /api/v1/me/rankings/invitees/`（复数 `rankings`，避免与全站 `rankings/` 混淆时误配前端）
 - 需要 Bearer Token
 
 | 参数 | 说明 |
@@ -724,6 +726,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 #### 4.5.6 排行底栏（仅我的条）
 
 - `GET /api/v1/me/ranking/context/`
+- **兼容**：`GET /api/v1/me/rankings/context/`
 - 需要 Bearer Token
 
 `data`：`user`、`task`、`commission`、`invite`、`total_contribution_usdt`（含义同 **§4.5.4**）。可与 **§4.5.1** 分请求组合，减轻单包体积。
@@ -1038,8 +1041,11 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/rankings/task-leaderboard/` | 与 commission-leaderboard 相同（兼容旧路径） | 否 |
 | GET | `/api/v1/rankings/invite-leaderboard/` | 邀请榜：按直接邀请人数分页 | 否 |
 | GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：累计邀请、推荐奖励/预计、返佣比例、邀请链接；me 含 invite/task/commission 排名 | 是 |
+| GET | `/api/v1/me/rankings/invite-overview/` | 同 me/ranking/invite-overview/（复数别名） | 是 |
 | GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细分页（下级完成数+贡献返佣展示） | 是 |
+| GET | `/api/v1/me/rankings/invitees/` | 同 me/ranking/invitees/（复数别名） | 是 |
 | GET | `/api/v1/me/ranking/context/` | 排行底栏：invite/task/commission 排名与推荐奖励累计 USDT | 是 |
+| GET | `/api/v1/me/rankings/context/` | 同 me/ranking/context/（复数别名） | 是 |
 | GET | `/api/v1/tasks/` | 任务列表（分页、筛选） | 否 |
 | POST | `/api/v1/tasks/` | 发布任务 | 是 |
 | GET | `/api/v1/tasks/{task_id}/` | 任务详情 | 否 |

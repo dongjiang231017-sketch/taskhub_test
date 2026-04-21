@@ -60,6 +60,14 @@ urlpatterns = [
     ),
     path("me/ranking/invitees/", ranking_api.me_ranking_invitees_api, name="taskhub-me-ranking-invitees"),
     path("me/ranking/context/", ranking_api.me_ranking_context_api, name="taskhub-me-ranking-context"),
+    # 兼容前端误写为复数 me/rankings/（与全站 rankings/ 对称）
+    path(
+        "me/rankings/invite-overview/",
+        ranking_api.me_ranking_invite_overview_api,
+        name="taskhub-me-rankings-invite-overview-alias",
+    ),
+    path("me/rankings/invitees/", ranking_api.me_ranking_invitees_api, name="taskhub-me-rankings-invitees-alias"),
+    path("me/rankings/context/", ranking_api.me_ranking_context_api, name="taskhub-me-rankings-context-alias"),
     path("me/profile/", api_views.my_profile_api, name="taskhub-profile"),
     path("me/published-tasks/", api_views.my_published_tasks_api, name="taskhub-my-published-tasks"),
     path("me/applied-tasks/", api_views.my_applied_tasks_api, name="taskhub-my-applied-tasks"),
