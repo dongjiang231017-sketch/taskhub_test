@@ -40,6 +40,13 @@ try:
 except ImportError:
     pass
 
+# 邀请链接「t.me/BotUsername?start=ref_xxx」形态：填 Bot 用户名（无 @），与 FoxiGrow 等一致；不配则仍用下方 INVITE_LINK_BASE_URL / 站内路径
+TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
+# 可选：Mini App 短名（BotFather 里 Direct Link 的 app 名），与 TELEGRAM_BOT_USERNAME 同时配置时 API 会多返回 mini_app_url（?startapp= 便于 initData 带参）
+TELEGRAM_MINI_APP_SHORT_NAME = os.environ.get("TELEGRAM_MINI_APP_SHORT_NAME", "").strip()
+# ?start= 参数前缀，默认 ref_（与常见「ref_+TelegramId」一致）
+TELEGRAM_INVITE_START_PREFIX = os.environ.get("TELEGRAM_INVITE_START_PREFIX", "ref_").strip() or "ref_"
+
 # Twitter / X API v2（只读 Bearer）：用于「绑定推特 + 校验转发/关注」类必做任务
 # 优先读 core/twitter_secrets.py（复制 twitter_secrets.example.py 为 twitter_secrets.py 后填写）；否则读环境变量 TWITTER_BEARER_TOKEN
 TWITTER_BEARER_TOKEN = os.environ.get("TWITTER_BEARER_TOKEN", "").strip()

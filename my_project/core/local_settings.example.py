@@ -41,6 +41,12 @@ DATABASES = {
 # 并确认 Nginx 已传 X-Forwarded-Proto（HTTPS 站点一般为 https）
 
 # 排行 / 邀请（可选，不配则用 settings.py 默认值）
-# INVITE_LINK_BASE_URL=https://t.me/YourBot?startapp=
+# Foxi 式邀请链接：配置 Bot 用户名（无 @）后，排行接口里 invite_link.full_url 形如 https://t.me/YourBot?start=ref_<邀请人telegram_id 或 invite_code>
+# TELEGRAM_BOT_USERNAME=YourBot
+# TELEGRAM_INVITE_START_PREFIX=ref_
+# 若同时有 Mini App Direct Link，可填短名，接口会多返回 mini_app_url（?startapp=invite_code，便于 initData 带参）
+# TELEGRAM_MINI_APP_SHORT_NAME=myapp
+# 未配 TELEGRAM_BOT_USERNAME 时可用站内或自定义前缀落地页：
+# INVITE_LINK_BASE_URL=https://task.example.com
 # INVITE_COMMISSION_RATE=0.10
 # PLATFORM_STATS_ANCHOR_DATE=2026-01-01

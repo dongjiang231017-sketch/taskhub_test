@@ -247,7 +247,7 @@ def telegram_auth_api(request):
                 "body_fields": {
                     "init_data": "与 Telegram.WebApp.initData 一致；也可用驼峰 initData",
                     "include_home": "可选 true：登录成功后在同一响应里附带与 GET /api/v1/me/home/ 相同的 home 对象",
-                    "invite_code": "可选；与 initData 内 start_param 二选一或同时传，用于新用户绑定推荐人（须与邀请人的 invite_code 一致）",
+                    "invite_code": "可选；与 initData 内 start_param 二选一或同时传，用于绑定推荐人；载荷可为 invite_code，或常见 ref_<TelegramId>（与 https://t.me/Bot?start=ref_… 一致）",
                 },
             },
             message="请使用 POST 发起 Telegram 登录",
@@ -319,8 +319,8 @@ def telegram_auth_api(request):
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
 
-        # 推荐关系：Mini App 通过 t.me/bot/...?startapp=<invite_code> 打开时，initData 会带 start_param；
-        # 也可在 body 传 invite_code / ref（与注册邀请码一致，见 FrontendUser.invite_code）。
+        # 推荐关系：Mini App 通过 ?startapp= 打开时 initData 会带 start_param；Bot 深链 ?start=ref_… 需用户再进 Mini App 或由 Bot 发带 startapp 的按钮。
+        # body 可传 invite_code / ref / inviter_invite_code；解析支持 ref_<telegram_id> 与 invite_code（见 referrals.resolve_inviter_from_start_token）。
         pairs = validated.get("parsed_pairs") or {}
         start_param = (pairs.get("start_param") or "").strip()
         body_invite = (

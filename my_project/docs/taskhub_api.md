@@ -660,7 +660,10 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 | 变量 | 说明 |
 | --- | --- |
-| `INVITE_LINK_BASE_URL` | 邀请落地页前缀，**勿**尾斜杠。例：`https://t.me/YourBot?startapp=`（Mini App）或 `https://task.example.com`。未配置时 `invite_link.full_url` 为当前站点绝对路径 `/invite/{invite_code}`。 |
+| `TELEGRAM_BOT_USERNAME` | Bot 用户名（**无** `@`）。若配置，**优先**生成 Foxi 式链接：`https://t.me/{username}?start={TELEGRAM_INVITE_START_PREFIX}{邀请人 telegram_id 或 invite_code}`（邀请人已绑定 Telegram 时用数字 id，否则用邀请码）。 |
+| `TELEGRAM_INVITE_START_PREFIX` | 默认 `ref_`；与 `?start=` 拼接在 id/码前。 |
+| `TELEGRAM_MINI_APP_SHORT_NAME` | 可选；与 `TELEGRAM_BOT_USERNAME` 同时配置时，`invite_link` 会多返回 **`mini_app_url`**：`https://t.me/{bot}/{short}?startapp={invite_code}`，便于用户在 **Mini App** 内登录时 `initData.start_param` 仍带邀请码（`?start=` 先打开 Bot 对话，不会自动把参数交给 WebApp，需 Bot 菜单/按钮再打开 Mini App）。 |
+| `INVITE_LINK_BASE_URL` | **未**配置 `TELEGRAM_BOT_USERNAME` 时使用：邀请落地页前缀，**勿**尾斜杠。例 `https://task.example.com`；未配置时 `invite_link.full_url` 为当前站点绝对路径 `/invite/{invite_code}`。 |
 | `INVITE_COMMISSION_RATE` | 默认 `0.10`；用于「预计收益」估算与 `commission.label` 文案。 |
 | `PLATFORM_STATS_ANCHOR_DATE` | `YYYY-MM-DD`，全站「运营天数」起点；不设则取库内最早用户/任务创建日。 |
 
@@ -707,7 +710,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 `data.invite`：`total_invited`、`referral_credited_usdt`（当前用户钱包 **`change_type=reward`** 且 USDT 正数累计）、`referral_estimated_display_usdt`（在已入账推荐奖励基础上，叠加「下级 `task_reward` USDT 累计 × `INVITE_COMMISSION_RATE`」的**展示用**估算）、`commission`（`decimal` / `percent` / `label`）、`note`（字段含义说明）。
 
-`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）。
+`data.invite_link`：`invite_code`、`path`、`full_url`（复制用）、`link_style`（`telegram_bot_start` / `custom_base` / `site_absolute` / `site_path`）、`start_param`（仅 Bot 深链形态时有，即 `?start=` 的值）。若配置了 `TELEGRAM_MINI_APP_SHORT_NAME`，另有 **`mini_app_url`**（直接打开 Mini App 并带 `startapp=`）。
 
 `data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（按**已录用任务数**的全站名次：`rank` / `completed_tasks` / `surpassed_users_percent`）、**`commission`**（按 **`task_reward` USDT 累计** 的佣金榜名次：`rank` / `task_commission_usdt` / `surpassed_users_percent`）、`total_contribution_usdt`（推荐奖励 USDT 累计，与 `referral_credited_usdt` 一致，底栏「总贡献」语境）。
 
