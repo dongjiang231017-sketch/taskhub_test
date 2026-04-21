@@ -19,6 +19,7 @@ from wallets.models import Transaction, Wallet
 
 from .integration_config import get_telegram_bot_token
 from .models import ApiToken, CheckInConfig, CheckInRecord, TaskApplication
+from .referrals import try_bind_referrer_by_invite_code
 from .telegram_auth import validate_webapp_init_data
 
 from .api_views import (
@@ -246,6 +247,7 @@ def telegram_auth_api(request):
                 "body_fields": {
                     "init_data": "与 Telegram.WebApp.initData 一致；也可用驼峰 initData",
                     "include_home": "可选 true：登录成功后在同一响应里附带与 GET /api/v1/me/home/ 相同的 home 对象",
+                    "invite_code": "可选；与 initData 内 start_param 二选一或同时传，用于新用户绑定推荐人（须与邀请人的 invite_code 一致）",
                 },
             },
             message="请使用 POST 发起 Telegram 登录",
@@ -317,8 +319,19 @@ def telegram_auth_api(request):
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
 
+        # 推荐关系：Mini App 通过 t.me/bot/...?startapp=<invite_code> 打开时，initData 会带 start_param；
+        # 也可在 body 传 invite_code / ref（与注册邀请码一致，见 FrontendUser.invite_code）。
+        pairs = validated.get("parsed_pairs") or {}
+        start_param = (pairs.get("start_param") or "").strip()
+        body_invite = (
+            (body.get("invite_code") or body.get("ref") or body.get("inviter_invite_code") or "").strip()
+        )
+        if start_param or body_invite:
+            try_bind_referrer_by_invite_code(user, start_param or body_invite)
+
         token = ApiToken.issue_for_user(user)
 
+    user.refresh_from_db()
     payload_user = serialize_user(user)
     payload_user["telegram_first_name"] = first
     out: dict = {"token": token.key, "user": payload_user}

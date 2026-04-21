@@ -47,6 +47,43 @@ def _child_completed_tasks_count(child: FrontendUser) -> int:
     ).count()
 
 
+def _user_task_commission_usdt(user: FrontendUser) -> Decimal:
+    """个人通过做任务获得的 USDT（钱包 task_reward 正数合计，不含 TH）。"""
+    Wallet.objects.get_or_create(user=user)
+    wallet = Wallet.objects.get(user=user)
+    s = (
+        Transaction.objects.filter(wallet=wallet, change_type="task_reward", amount__gt=0)
+        .exclude(remark__icontains="TH Coin")
+        .aggregate(s=Sum("amount"))["s"]
+    )
+    return _d_money(s)
+
+
+def _commission_rank_position(user: FrontendUser) -> int:
+    """佣金榜名次：严格多于本人 task_reward USDT 累计的人数 + 1。"""
+    my_amt = _user_task_commission_usdt(user)
+    higher = (
+        Transaction.objects.filter(change_type="task_reward", amount__gt=0)
+        .exclude(remark__icontains="TH Coin")
+        .values("wallet__user_id")
+        .annotate(t=Sum("amount"))
+        .filter(t__gt=my_amt)
+        .count()
+    )
+    return higher + 1
+
+
+def _commission_rank_and_percentile(user: FrontendUser) -> dict:
+    rank = _commission_rank_position(user)
+    total_users = FrontendUser.objects.filter(status=True).count() or 1
+    surpassed = int(100 * max(0, total_users - rank) / total_users)
+    return {
+        "rank": rank,
+        "task_commission_usdt": str(_user_task_commission_usdt(user)),
+        "surpassed_users_percent": min(99, max(0, surpassed)),
+    }
+
+
 def _platform_operating_days() -> int:
     anchor = getattr(settings, "PLATFORM_STATS_ANCHOR_DATE", "").strip()
     if anchor:
@@ -132,8 +169,11 @@ def rankings_platform_stats_api(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def rankings_task_leaderboard_api(request):
-    """任务榜：按已录用任务数降序分页；可不登录。"""
+def rankings_commission_leaderboard_api(request):
+    """
+    佣金榜：按个人做任务获得的 USDT 累计（账变 task_reward）降序分页。
+    与「邀请榜」独立；可不登录。路径亦保留别名 `rankings/task-leaderboard/`。
+    """
     try:
         page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
         page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
@@ -142,29 +182,40 @@ def rankings_task_leaderboard_api(request):
     page_size = min(page_size, 50)
 
     base = (
-        TaskApplication.objects.filter(status=TaskApplication.STATUS_ACCEPTED)
-        .values("applicant_id")
-        .annotate(completed_tasks=Count("id"))
-        .order_by("-completed_tasks", "applicant_id")
+        Transaction.objects.filter(change_type="task_reward", amount__gt=0)
+        .exclude(remark__icontains="TH Coin")
+        .values("wallet__user_id")
+        .annotate(task_commission_usdt=Sum("amount"))
+        .order_by("-task_commission_usdt", "wallet__user_id")
     )
     total = base.count()
     offset = (page - 1) * page_size
     slice_rows = list(base[offset : offset + page_size])
-    ids = [r["applicant_id"] for r in slice_rows]
+    ids = [r["wallet__user_id"] for r in slice_rows]
     users_by_id = FrontendUser.objects.in_bulk(ids)
+    count_by = {
+        row["applicant_id"]: row["n"]
+        for row in TaskApplication.objects.filter(
+            applicant_id__in=ids, status=TaskApplication.STATUS_ACCEPTED
+        )
+        .values("applicant_id")
+        .annotate(n=Count("id"))
+    }
     items = []
     for idx, row in enumerate(slice_rows, start=offset + 1):
-        uid = row["applicant_id"]
+        uid = row["wallet__user_id"]
         u = users_by_id.get(uid)
         if not u:
             continue
         card = _user_public_card(u)
         card["rank"] = idx
-        card["completed_tasks"] = row["completed_tasks"]
+        card["task_commission_usdt"] = str(_d_money(row["task_commission_usdt"]))
+        card["completed_tasks"] = int(count_by.get(uid, 0))
         items.append(card)
 
     return api_response(
         {
+            "leaderboard_type": "task_commission_usdt",
             "items": items,
             "pagination": {"page": page, "page_size": page_size, "total": total, "has_more": offset + len(items) < total},
         }
@@ -269,6 +320,7 @@ def me_ranking_invite_overview_api(request):
         "me": {
             "invite": _invite_rank_and_percentile(user),
             "task": _task_rank_and_percentile(user),
+            "commission": _commission_rank_and_percentile(user),
             "user": _user_public_card(user),
             "total_contribution_usdt": str(credited),
         },
@@ -339,12 +391,13 @@ def me_ranking_invitees_api(request):
 @require_api_login
 @require_http_methods(["GET"])
 def me_ranking_context_api(request):
-    """排行页底栏「我的」条：任务排名、邀请排名、总贡献(推荐奖励 USDT)。"""
+    """排行页底栏：邀请排名、已录用任务数排名、做任务佣金(USDT)排名、推荐奖励累计。"""
     user = request.api_user
     credited = _referrer_reward_usdt_sum(user)
     data = {
         "user": _user_public_card(user),
         "task": _task_rank_and_percentile(user),
+        "commission": _commission_rank_and_percentile(user),
         "invite": _invite_rank_and_percentile(user),
         "total_contribution_usdt": str(credited),
     }

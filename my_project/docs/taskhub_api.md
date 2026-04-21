@@ -47,9 +47,12 @@ Authorization: Bearer <token>
   "username": "alice",
   "password": "123456",
   "pay_password": "123456",
-  "membership_level": 1
+  "membership_level": 1,
+  "invite_code": "ABCD1234"
 }
 ```
+
+- **`invite_code`**（可选，也可用 **`ref`**）：与邀请人的 **`FrontendUser.invite_code`** 一致时，新用户 **`referrer`** 会写入该邀请人；无效码则忽略（不报错）。
 
 ### 2.2 登录
 
@@ -102,6 +105,7 @@ Authorization: Bearer <token>
 
 - `init_data`：必填（或驼峰 **`initData`**，二者填一个即可）。
 - **`include_home`**（可选，布尔或 `"true"`/`1`）：为 **`true`** 时，登录成功后在**同一响应**的 `data.home` 中附带与 **`GET /api/v1/me/home/`** 完全相同的结构（`user` / `wallet` / `stats` / `check_in`）。**推荐 Mini App 首屏打开时**与 `init_data` 一并 POST，实现「自动注册/登录 + 立即用该账号拉首页数据」一次完成；后续其它接口仍须带 **`Authorization: Bearer <token>`**。
+- **`invite_code` / `ref` / `inviter_invite_code`**（可选）：与 **`initData` 内 `start_param`** 作用相同，用于绑定 **`referrer`**；见上文行为说明第 3 点。若前端已从落地 URL 解析出邀请码，也可在 **POST body** 再传一份以防个别客户端未把参数带进 `initData`。
 
 **服务端环境变量**（必填才能校验签名）：
 
@@ -111,7 +115,8 @@ Authorization: Bearer <token>
 
 1. 使用 [Telegram Web Apps 校验规则](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) 校验 `init_data` 的 `hash` 与 `auth_date`（默认允许 86400 秒内）。
 2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户会分配 `username`（如 `tg123456789`），`phone` 为空，并自动创建钱包。
-3. 签发/刷新 `ApiToken` 并返回（与手机号登录相同结构）。
+3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，服务端会依次读取 **`initData` 解析出的 `start_param`**（用户通过 **`https://t.me/<BotUsername>/<MiniAppShortName>?startapp=<邀请码>`** 打开 Mini App 时，Telegram 会把 `<邀请码>` 放入签名字段 **`start_param`**）以及 POST body 中的 **`invite_code` / `ref` / `inviter_invite_code`**；与某位用户的 **`invite_code`**（不区分大小写，最长 10 位）匹配则写入 **`referrer`**。已绑定过的账号**不会**被覆盖。邀请码无效或指向自己时静默跳过。
+4. 签发/刷新 `ApiToken` 并返回（与手机号登录相同结构）。
 
 **业务错误（未自动注册时优先核对）**
 
@@ -649,7 +654,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 ### 4.5 排行模块（排行榜页）
 
-对接产品「排行」Tab：全站统计、任务榜、邀请榜、邀请统计与明细、底栏「我的」摘要。金额字段均为 **USDT 字符串**（两位小数）；前端可映射为 ¥ 展示。
+对接产品「排行」Tab：**顶部全站统计**与 **§4.5.1** 一致（全网数据）；**佣金榜**按个人做任务获得的 **USDT**（钱包 **`task_reward`** 累计）排行；**邀请榜**仅按 **直接邀请人数** 排行；邀请统计区 / 底栏「我的」为**当前登录用户**数据。金额字段均为 **USDT 字符串**（两位小数）；前端可映射为 ¥ 展示。
 
 **环境变量 / `settings`（可选）**
 
@@ -674,17 +679,18 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `operating_days` | 运营天数（见上表锚点） |
 | `currency_display_hint` | 提示前端可自行映射 ¥ |
 
-#### 4.5.2 任务榜
+#### 4.5.2 佣金榜（做任务获得的 USDT 排行）
 
-- `GET /api/v1/rankings/task-leaderboard/`
-- **可不登录**；带 Bearer 不改变排序，仅便于统一鉴权中间件
+- **主路径**：`GET /api/v1/rankings/commission-leaderboard/`
+- **兼容**：`GET /api/v1/rankings/task-leaderboard/`（与主路径返回相同，便于旧前端）
+- **可不登录**
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `page` | 1 |  |
 | `page_size` | 20，最大 50 |  |
 
-`data.items[]`：`rank`、`id`、`username`、`membership_level`、`avatar_url`（暂 `null`）、`completed_tasks`（已录用报名数）。`pagination` 含 `has_more`。
+`data.leaderboard_type` 固定为 `task_commission_usdt`。`data.items[]`：`rank`、`id`、`username`、`membership_level`、`avatar_url`（暂 `null`）、**`task_commission_usdt`**（该用户钱包 **`task_reward`** USDT 正数合计）、**`completed_tasks`**（已录用报名数，便于 UI 副文案）。`pagination` 含 `has_more`。
 
 #### 4.5.3 邀请榜
 
@@ -702,7 +708,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 `data.invite_link`：`invite_code`、`path`、`full_url`（复制用）。
 
-`data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（`rank` / `completed_tasks` / `surpassed_users_percent`）、`total_contribution_usdt`（与 `referral_credited_usdt` 一致，底栏「总贡献」）。
+`data.me`：`user`（公开卡片字段）、`invite`（`rank` / `invited_count` / `surpassed_users_percent`）、`task`（按**已录用任务数**的全站名次：`rank` / `completed_tasks` / `surpassed_users_percent`）、**`commission`**（按 **`task_reward` USDT 累计** 的佣金榜名次：`rank` / `task_commission_usdt` / `surpassed_users_percent`）、`total_contribution_usdt`（推荐奖励 USDT 累计，与 `referral_credited_usdt` 一致，底栏「总贡献」语境）。
 
 #### 4.5.5 我的邀请明细分页
 
@@ -720,7 +726,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 - `GET /api/v1/me/ranking/context/`
 - 需要 Bearer Token
 
-`data`：`user`、`task`、`invite`、`total_contribution_usdt`。可与 **§4.5.1** 分请求组合，减轻单包体积。
+`data`：`user`、`task`、`commission`、`invite`、`total_contribution_usdt`（含义同 **§4.5.4**）。可与 **§4.5.1** 分请求组合，减轻单包体积。
 
 ## 5. 报名接口
 
@@ -1028,11 +1034,12 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/tasks/mandatory/` | 首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏 | 否 |
 | GET | `/api/v1/tasks/center/` | 任务中心：分类 Tab + 必做 + 可用；必做区剔除规则同 tasks/mandatory/ | 否 |
 | GET | `/api/v1/rankings/platform-stats/` | 排行页全站统计：任务总数、任务奖励 USDT 发放合计、用户数、运营天数 | 否 |
-| GET | `/api/v1/rankings/task-leaderboard/` | 任务榜：按已录用任务数分页 | 否 |
+| GET | `/api/v1/rankings/commission-leaderboard/` | 佣金榜：按个人做任务 task_reward USDT 累计分页 | 否 |
+| GET | `/api/v1/rankings/task-leaderboard/` | 与 commission-leaderboard 相同（兼容旧路径） | 否 |
 | GET | `/api/v1/rankings/invite-leaderboard/` | 邀请榜：按直接邀请人数分页 | 否 |
-| GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：累计邀请、推荐奖励/预计展示、返佣比例、邀请链接、我的排名摘要 | 是 |
+| GET | `/api/v1/me/ranking/invite-overview/` | 排行邀请区：累计邀请、推荐奖励/预计、返佣比例、邀请链接；me 含 invite/task/commission 排名 | 是 |
 | GET | `/api/v1/me/ranking/invitees/` | 我的邀请明细分页（下级完成数+贡献返佣展示） | 是 |
-| GET | `/api/v1/me/ranking/context/` | 排行底栏：我的任务/邀请排名、超越比例、总贡献 USDT | 是 |
+| GET | `/api/v1/me/ranking/context/` | 排行底栏：invite/task/commission 排名与推荐奖励累计 USDT | 是 |
 | GET | `/api/v1/tasks/` | 任务列表（分页、筛选） | 否 |
 | POST | `/api/v1/tasks/` | 发布任务 | 是 |
 | GET | `/api/v1/tasks/{task_id}/` | 任务详情 | 否 |

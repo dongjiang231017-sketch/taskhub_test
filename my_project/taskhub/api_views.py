@@ -655,6 +655,11 @@ def register_api(request):
     if FrontendUser.objects.filter(username=username).exists():
         return api_error("用户名已被占用", code=4007, status=409)
 
+    ref_raw = (body.get("invite_code") or body.get("ref") or "").strip()[:10]
+    referrer_obj = None
+    if ref_raw:
+        referrer_obj = FrontendUser.objects.filter(invite_code__iexact=ref_raw).first()
+
     with transaction.atomic():
         user = FrontendUser.objects.create(
             phone=phone,
@@ -662,6 +667,7 @@ def register_api(request):
             password=password,
             pay_password=pay_password,
             membership_level=membership_level,
+            referrer=referrer_obj,
         )
         Wallet.objects.get_or_create(user=user)
         token = ApiToken.issue_for_user(user)

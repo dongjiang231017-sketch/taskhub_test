@@ -39,9 +39,14 @@ urlpatterns = [
     path("tasks/center/", api_views.tasks_center_api, name="taskhub-tasks-center"),
     path("rankings/platform-stats/", ranking_api.rankings_platform_stats_api, name="taskhub-rankings-platform-stats"),
     path(
+        "rankings/commission-leaderboard/",
+        ranking_api.rankings_commission_leaderboard_api,
+        name="taskhub-rankings-commission-leaderboard",
+    ),
+    path(
         "rankings/task-leaderboard/",
-        ranking_api.rankings_task_leaderboard_api,
-        name="taskhub-rankings-task-leaderboard",
+        ranking_api.rankings_commission_leaderboard_api,
+        name="taskhub-rankings-task-leaderboard-alias",
     ),
     path(
         "rankings/invite-leaderboard/",
