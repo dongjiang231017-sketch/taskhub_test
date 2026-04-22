@@ -374,6 +374,41 @@ def build_mandatory_task_items(current_user):
         else:
             data["my_application"] = None if current_user else None
         items.append(data)
+
+    # 必做任务已非 open（关闭/完成等）时，原先整段从列表消失；若用户曾「已录用」且仍未结奖/未完成，补一条卡片便于入口与任务记录对齐
+    shown_ids = {t.id for t in qs}
+    if current_user:
+        stuck_qs = Task.objects.filter(is_mandatory=True).exclude(status=Task.STATUS_OPEN).filter(
+            applications__applicant=current_user,
+            applications__status=TaskApplication.STATUS_ACCEPTED,
+        )
+        if shown_ids:
+            stuck_qs = stuck_qs.exclude(pk__in=shown_ids)
+        stuck_qs = (
+            stuck_qs.select_related("publisher", "category")
+            .annotate(
+                application_count=Count("applications"),
+                accepted_count=Count(
+                    "applications", filter=Q(applications__status=TaskApplication.STATUS_ACCEPTED)
+                ),
+            )
+            .distinct()
+            .order_by("-task_list_order", "-id")
+        )
+        for t in stuck_qs:
+            app = TaskApplication.objects.filter(
+                task=t, applicant=current_user, status=TaskApplication.STATUS_ACCEPTED
+            ).first()
+            if not app or _task_application_truly_done(app, t):
+                continue
+            data = serialize_task(t, current_user=current_user)
+            enrich_task_card_fields(t, data)
+            data["my_application"] = _my_application_brief(app)
+            data["mandatory_task_stale"] = True
+            data["mandatory_task_stale_hint"] = (
+                "任务已结束或暂不可接；您曾接取但未完成。若运营将任务改回「可报名」，请再点报名或从任务记录查看。"
+            )
+            items.append(data)
     return items
 
 
@@ -1287,6 +1322,39 @@ def task_apply_api(request, task_id):
                     "您已接取该任务，请继续完成校验或等待审核；任务重新开放后亦不可重复报名。",
                     code=4100,
                     status=409,
+                )
+            # 已录用、未完成、无自检/截图进度，且任务已重新 open：重置为 pending 并同步报名信息（此前漏 return 会误落 4098）
+            with transaction.atomic():
+                try:
+                    task = Task.objects.select_for_update().get(pk=task_id)
+                except Task.DoesNotExist:
+                    return api_error("任务不存在", code=4032, status=404)
+                if task.publisher_id == request.api_user.id:
+                    return api_error("不能报名自己发布的任务", code=4033, status=400)
+                if task.status != Task.STATUS_OPEN:
+                    return api_error("当前任务不可报名", code=4034, status=400)
+                locked = TaskApplication.objects.select_for_update().get(pk=existing.pk)
+                if locked.status != TaskApplication.STATUS_ACCEPTED:
+                    return api_error("报名状态已变更，请刷新页面", code=4090, status=409)
+                if _task_application_truly_done(locked, task):
+                    application = TaskApplication.objects.select_related("task", "applicant").get(pk=locked.pk)
+                    return api_response(
+                        {"application": serialize_application(application, request)},
+                        message="您已完成该任务",
+                    )
+                if not _accepted_can_reset_to_pending_for_reapply(locked):
+                    return api_error(
+                        "您已接取该任务，请继续完成校验或等待审核；任务重新开放后亦不可重复报名。",
+                        code=4100,
+                        status=409,
+                    )
+                bound_username = normalize_bound_username_for_task(task, bound_username_raw) or None
+                _reset_task_application_to_pending(
+                    locked, bound_username=bound_username, proposal=proposal, quoted_price=quoted_price
+                )
+                locked.refresh_from_db()
+                return _task_apply_sync_pending_application(
+                    request, task, locked, body, bound_username, proposal, quoted_price
                 )
         elif existing.status == TaskApplication.STATUS_PENDING:
             with transaction.atomic():

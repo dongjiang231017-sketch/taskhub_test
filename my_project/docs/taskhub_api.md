@@ -681,7 +681,9 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 ### 4.0 必做任务列表（首页「必做」卡片）
 
-与 `GET /api/v1/tasks/` 使用同一套 `task` 序列化字段；仅筛选 **`is_mandatory=true` 且 `status=open`**，按 `task_list_order` 降序。已登录时：**仅当**当前用户对该任务为 **`accepted` 且已结奖（`reward_paid_at`）或任务无正数展示奖励** 时本条才从列表剔除；**已录用但未发奖**仍出现在列表中并带 `my_application`，便于继续完成校验。
+与 `GET /api/v1/tasks/` 使用同一套 `task` 序列化字段；主列表筛选 **`is_mandatory=true` 且 `status=open`**，按 `task_list_order` 降序。已登录时：**仅当**当前用户对该任务为 **`accepted` 且已结奖（`reward_paid_at`）或任务无正数展示奖励** 时本条才从列表剔除；**已录用但未发奖**仍出现在列表中并带 `my_application`，便于继续完成校验。
+
+**补充（已结束必做）**：若必做任务因关闭/完成等变为 **`status` 非 `open`**，而当前用户仍为 **`accepted` 且尚有应付展示奖励未完成**（与「任务记录」里**已失效**口径一致），接口会在 **`items` 末尾**追加同结构的任务卡片，并带 **`mandatory_task_stale: true`** 与 **`mandatory_task_stale_hint`** 说明文案，避免任务从首页/任务中心整块消失、用户找不到入口。运营将任务改回 **`open`** 后，用户可再次 **`POST .../apply/`**（已录用且无自检/截图进度时会自动重置为待处理并同步报名信息；此前该路径曾误返回「状态异常」）。
 
 - `GET /api/v1/tasks/mandatory/`
 - **可不登录**。若带 Bearer，则每条任务会多返回 `my_application`（当前用户对该任务的报名，无则为 `null`）。
@@ -717,7 +719,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | 字段 | 说明 |
 | --- | --- |
 | `categories` | 数组：**首条为虚拟「全部」**（`id: null`, `slug: "all"`, `is_all: true`），其后为后台「任务分类」启用的分类（同 `GET /api/v1/categories/` 单条结构）。 |
-| `mandatory` | 对象：`items` 与 **`GET /api/v1/tasks/mandatory/`** 一致（必做、`status=open`；**仅**当前用户对该任务为 **`accepted` 且已结奖或无应付奖励** 时才剔除，接了未完成仍返回卡片并带 `my_application`）；`updated_at` 为服务端生成快照时间（ISO8601）。 |
+| `mandatory` | 对象：`items` 与 **`GET /api/v1/tasks/mandatory/`** 一致（含 **`status=open`** 主列表 + 末尾 **`mandatory_task_stale`** 补录项，规则见 **§4.0**）；`updated_at` 为服务端生成快照时间（ISO8601）。 |
 | `available` | 对象：`items` 为 **非必做**（`is_mandatory=false`）且 **`status=open`** 的任务；`pagination`；`updated_at`。排序：按任务 **`updated_at` 降序**（便于「更新于 x 分钟前」）。 |
 
 **任务对象在以上接口中，在通用 `task` 字段（见 **§4.3**）基础上额外包含（卡片 UI）：**
@@ -728,6 +730,8 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `accepted_count` | number | 已录用（`accepted`）报名人数 |
 | `slot_progress_percent` | number 或 `null` | **名额占用进度** \(min(100, accepted_count × 100 ÷ applicants_limit)\)，用于「当前进度」进度条；`applicants_limit` 为 0 或未配置时为 `null` |
 | `application_count` | number | 总报名人数（**「x 人参与」**建议用此字段） |
+| `mandatory_task_stale` | boolean | 可选；为 `true` 时表示本条为「已非 open 的必做 + 您曾已录用仍未完成」的补录卡片，见 **§4.0** |
+| `mandatory_task_stale_hint` | string | 与 `mandatory_task_stale` 同时出现；人类可读提示（如任务已结束、重新开放后可再报名） |
 
 **说明**：`slot_progress_percent` 表示**任务名额**被占满的比例，不是单个用户个人完成度；个人进度需结合 `my_application.status` 等自行判断。
 
@@ -1249,7 +1253,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/guides/featured/` | 新手指南：置顶大卡/首条推荐（Announcement post_type=newbie_guide） | 否 |
 | GET | `/api/v1/guides/` | 新手指南：列表（category_slug=外键 slug 或旧 key；guide_type；分页；正文在详情） | 否 |
 | GET | `/api/v1/guides/{pk}/` | 新手指南：详情（body=富文本 HTML；video_url 优先本地上传地址） | 否 |
-| GET | `/api/v1/tasks/mandatory/` | 首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏 | 否 |
+| GET | `/api/v1/tasks/mandatory/` | 首页必做：open 主列表 + 末尾 mandatory_task_stale 补录（已关必做且已接未完成） | 否 |
 | GET | `/api/v1/tasks/center/` | 任务中心：分类 Tab + 必做 + 可用；必做区剔除规则同 tasks/mandatory/ | 否 |
 | GET | `/api/v1/rankings/platform-stats/` | 排行页全站统计：任务总数、任务奖励 USDT 发放合计、用户数、运营天数 | 否 |
 | GET | `/api/v1/rankings/commission-leaderboard/` | 佣金榜：按个人做任务 task_reward USDT 累计分页 | 否 |

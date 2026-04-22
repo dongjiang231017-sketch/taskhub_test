@@ -179,7 +179,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET",),
         "tasks/mandatory/",
-        "首页必做（open+is_mandatory）；仅已录用且已结奖/无奖励时对当前用户隐藏",
+        "首页必做：open 主列表 + 末尾 mandatory_task_stale 补录（已关必做且已接未完成）",
         False,
     ),
     PublicEndpoint(
