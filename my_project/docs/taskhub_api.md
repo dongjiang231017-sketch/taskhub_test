@@ -728,12 +728,15 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | --- | --- | --- |
 | `platform_key` | string | 用于 Tab 高亮 / 平台图标：`twitter`、`tiktok`、`youtube`、`instagram`、`facebook`、`telegram`、`other` 等；优先自 `binding_platform`，入群类为 `telegram`，否则尝试分类 `slug`。 |
 | `accepted_count` | number | 已录用（`accepted`）报名人数 |
-| `slot_progress_percent` | number 或 `null` | **名额占用进度** \(min(100, accepted_count × 100 ÷ applicants_limit)\)，用于「当前进度」进度条；`applicants_limit` 为 0 或未配置时为 `null` |
+| `slot_progress_percent` | number | **名额占用进度** \(min(100, accepted_count × 100 ÷ 有效需求人数)\)；有效需求人数为 `max(1, applicants_limit)`，避免后台误填 0 导致除零或进度异常 |
 | `application_count` | number | 总报名人数（**「x 人参与」**建议用此字段） |
+| `can_apply` | boolean | **任务中心 / 必做列表**返回；当前用户是否「仍可能」发起 `POST …/apply/`（不含已存在报名的细分）；未登录恒为 `false` |
+| `apply_precheck_code` | number | 与 `can_apply` 配套；`0` 表示预检通过；`4010` 未登录；`4033` 本人发布；`4034` 非可报名；`4035` 接取人数已满（与 `POST …/apply/` 常见错误码一致） |
+| `apply_precheck_message` | string | 人类可读说明，便于「开始」按钮直接 `toast`；**前端应在 `can_apply===false` 时展示，勿静默失败** |
 | `mandatory_task_stale` | boolean | 可选；为 `true` 时表示本条为「已非 open 的必做 + 您曾已录用仍未完成」的补录卡片，见 **§4.0** |
 | `mandatory_task_stale_hint` | string | 与 `mandatory_task_stale` 同时出现；人类可读提示（如任务已结束、重新开放后可再报名） |
 
-**说明**：`slot_progress_percent` 表示**任务名额**被占满的比例，不是单个用户个人完成度；个人进度需结合 `my_application.status` 等自行判断。
+**说明**：`slot_progress_percent` 表示**任务名额**被占满的比例，不是单个用户个人完成度；个人进度需结合 `my_application.status` 等自行判断。点击「开始」须带 **`Authorization: Bearer <token>`** 调 `POST /api/v1/tasks/{id}/apply/`；若未登录或人数已满，接口会返回非 0 `code`，应与 `apply_precheck_*` 一致。
 
 ### 4.1 任务列表
 

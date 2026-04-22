@@ -93,6 +93,12 @@ def is_mandatory_no_slot_cap(task: Task) -> bool:
     return False
 
 
+def effective_applicants_limit(task: Task) -> int:
+    """需求人数至少按 1 计，避免后台误填 0 导致 `active_taker_count >= limit` 恒成立、无人可报名。"""
+    n = int(task.applicants_limit or 0)
+    return n if n >= 1 else 1
+
+
 def active_taker_count(task: Task) -> int:
     """接取人数：待处理 + 已录用（每人至多一条报名）。"""
     return task.applications.filter(
@@ -123,7 +129,7 @@ def maybe_mark_task_completed_when_slots_full(task_id: int) -> None:
         task = Task.objects.select_for_update().get(pk=task_id)
         if task.status != Task.STATUS_OPEN or is_mandatory_no_slot_cap(task):
             return
-        if active_taker_count(task) < task.applicants_limit:
+        if active_taker_count(task) < effective_applicants_limit(task):
             return
         now = timezone.now()
         Task.objects.filter(pk=task.pk, status=Task.STATUS_OPEN).update(
@@ -141,7 +147,7 @@ def after_publisher_accepts_application(task: Task) -> None:
         if task.status != Task.STATUS_OPEN:
             return
         accepted = task.applications.filter(status=TaskApplication.STATUS_ACCEPTED).count()
-        if accepted < task.applicants_limit:
+        if accepted < effective_applicants_limit(task):
             return
         now = timezone.now()
         Task.objects.filter(pk=task.pk, status=Task.STATUS_OPEN).update(

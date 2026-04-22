@@ -20,6 +20,7 @@ from .platform_publisher import get_task_platform_publisher, is_platform_publish
 from .task_lifecycle import (
     active_taker_count,
     after_publisher_accepts_application,
+    effective_applicants_limit,
     is_mandatory_no_slot_cap,
     maybe_mark_task_completed_when_slots_full,
 )
@@ -315,17 +316,39 @@ def _task_platform_key(task: Task) -> str:
     return "other"
 
 
+def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, int, str | None]:
+    """列表/卡片用：当前用户是否「尚有可能」发起报名（不含已存在报名的细分）；POST 仍以 task_apply 为准。"""
+    if task.publisher_id == user.id:
+        return False, 4033, "不能报名自己发布的任务"
+    if task.status != Task.STATUS_OPEN:
+        return False, 4034, "当前任务不可报名"
+    if not is_mandatory_no_slot_cap(task):
+        if active_taker_count(task) >= effective_applicants_limit(task):
+            return False, 4035, "该任务接取人数已满"
+    return True, 0, None
+
+
+def enrich_task_apply_hints(task: Task, data: dict, current_user: FrontendUser | None) -> None:
+    """便于前端「开始」：未登录、本人发布、已满员等可直接提示，避免点了无反馈。"""
+    if not current_user:
+        data["can_apply"] = False
+        data["apply_precheck_code"] = 4010
+        data["apply_precheck_message"] = "未登录或 token 无效，请先登录后再点「开始」"
+        return
+    ok, code, msg = task_apply_precheck_for_list(task, current_user)
+    data["can_apply"] = ok
+    data["apply_precheck_code"] = code
+    data["apply_precheck_message"] = msg or ""
+
+
 def enrich_task_card_fields(task: Task, data: dict) -> None:
     """任务中心卡片：platform_key、名额进度、已录用人数（就地写入 data）。"""
     ac = getattr(task, "accepted_count", None)
     if ac is None:
         ac = task.applications.filter(status=TaskApplication.STATUS_ACCEPTED).count()
     data["accepted_count"] = ac
-    al = task.applicants_limit or 0
-    if al > 0:
-        data["slot_progress_percent"] = min(100, int(ac * 100 / al))
-    else:
-        data["slot_progress_percent"] = None
+    al = effective_applicants_limit(task)
+    data["slot_progress_percent"] = min(100, int(ac * 100 / al))
     data["platform_key"] = _task_platform_key(task)
 
 
@@ -373,6 +396,7 @@ def build_mandatory_task_items(current_user):
             data["my_application"] = _my_application_brief(app)
         else:
             data["my_application"] = None if current_user else None
+        enrich_task_apply_hints(t, data, current_user)
         items.append(data)
 
     # 必做任务已非 open（关闭/完成等）时，原先整段从列表消失；若用户曾「已录用」且仍未结奖/未完成，补一条卡片便于入口与任务记录对齐
@@ -408,6 +432,7 @@ def build_mandatory_task_items(current_user):
             data["mandatory_task_stale_hint"] = (
                 "任务已结束或暂不可接；您曾接取但未完成。若运营将任务改回「可报名」，请再点报名或从任务记录查看。"
             )
+            enrich_task_apply_hints(t, data, current_user)
             items.append(data)
     return items
 
@@ -481,6 +506,7 @@ def tasks_center_api(request):
         data["my_application"] = (
             _my_application_brief(app_by_task.get(t.id)) if current_user else None
         )
+        enrich_task_apply_hints(t, data, current_user)
         available_items.append(data)
 
     return api_response(
@@ -1221,7 +1247,7 @@ def _task_apply_handle_existing_row(request, task, dup, body, bound_username, pr
 
     if dup.status == TaskApplication.STATUS_CANCELLED:
         if not is_mandatory_no_slot_cap(task):
-            if active_taker_count(task) >= task.applicants_limit:
+            if active_taker_count(task) >= effective_applicants_limit(task):
                 return api_error("该任务接取人数已满", code=4035, status=400)
         _reset_task_application_to_pending(
             dup, bound_username=bound_username, proposal=proposal, quoted_price=quoted_price
@@ -1402,7 +1428,7 @@ def task_apply_api(request, task_id):
             )
 
         if not is_mandatory_no_slot_cap(task):
-            if active_taker_count(task) >= task.applicants_limit:
+            if active_taker_count(task) >= effective_applicants_limit(task):
                 return api_error("该任务接取人数已满", code=4035, status=400)
 
         if account_binding_requires_bound_username(task) and not bound_username:
@@ -1495,7 +1521,7 @@ def application_review_api(request, application_id):
                 task_ref = application.task
                 if is_mandatory_no_slot_cap(task_ref):
                     pass
-                elif task_ref.applicants_limit == 1:
+                elif effective_applicants_limit(task_ref) == 1:
                     TaskApplication.objects.filter(
                         task=task_ref,
                         status=TaskApplication.STATUS_PENDING,
@@ -1625,12 +1651,12 @@ def _auto_accept_after_binding_verify(application: TaskApplication) -> None:
     application.save(update_fields=["self_verified_at", "status", "decided_at", "updated_at"])
     if is_mandatory_no_slot_cap(task):
         return
-    if task.applicants_limit == 1:
+    if effective_applicants_limit(task) == 1:
         TaskApplication.objects.filter(task=task, status=TaskApplication.STATUS_PENDING).exclude(
             pk=application.pk
         ).update(status=TaskApplication.STATUS_REJECTED, decided_at=now)
     accepted_count = TaskApplication.objects.filter(task=task, status=TaskApplication.STATUS_ACCEPTED).count()
-    if accepted_count >= task.applicants_limit:
+    if accepted_count >= effective_applicants_limit(task):
         Task.objects.filter(pk=task.pk, status=Task.STATUS_OPEN).update(
             status=Task.STATUS_COMPLETED,
             updated_at=now,
