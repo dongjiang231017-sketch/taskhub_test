@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 
 from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
@@ -25,14 +26,59 @@ def _tier_status(invited: int, claimed: bool, threshold: int) -> str:
     return "locked"
 
 
+def _invite_achievement_earned_totals(user: FrontendUser) -> tuple[Decimal, Decimal]:
+    """
+    从钱包账变汇总「邀请成就」已入账奖励（与发奖时 remark 规则一致）。
+    返回 (USDT 合计, TH 类合计)；TH 用于前端成就概览「已获 FG」等展示。
+    """
+    wallet = getattr(user, "wallet", None)
+    if wallet is None:
+        return Decimal("0"), Decimal("0")
+    base = Transaction.objects.filter(wallet=wallet, change_type="invite_achievement", amount__gt=0)
+    usdt_raw = base.exclude(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+    th_raw = base.filter(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+    usdt = Decimal(usdt_raw or "0")
+    th = Decimal(th_raw or "0")
+    return usdt, th
+
+
+def build_invite_achievement_overview(user: FrontendUser) -> dict:
+    """成就概览：已完成档数 / 启用档总数、已获 USDT、已获 FG（FG=邀请成就 TH 入账合计）。"""
+    tier_ids = list(
+        InviteAchievementTier.objects.filter(is_active=True).values_list("id", flat=True)
+    )
+    total = len(tier_ids)
+    if total:
+        completed = InviteAchievementClaim.objects.filter(user=user, tier_id__in=tier_ids).count()
+    else:
+        completed = 0
+    usdt, th = _invite_achievement_earned_totals(user)
+    return {
+        "completed_count": completed,
+        "total_count": total,
+        "earned_usdt": str(usdt.quantize(Decimal("0.0001"))),
+        "earned_fg": str(th.quantize(Decimal("0.01"))),
+    }
+
+
 def build_invite_achievements_payload(user: FrontendUser) -> dict:
     invited = count_direct_invites(user)
-    tier_qs = InviteAchievementTier.objects.filter(is_active=True).order_by("sort_order", "invite_threshold", "id")
+    tier_list = list(
+        InviteAchievementTier.objects.filter(is_active=True).order_by("sort_order", "invite_threshold", "id")
+    )
+    active_ids = {t.id for t in tier_list}
     claimed_ids = set(
         InviteAchievementClaim.objects.filter(user=user).values_list("tier_id", flat=True)
     )
+    usdt, th = _invite_achievement_earned_totals(user)
+    overview = {
+        "completed_count": len(active_ids & claimed_ids),
+        "total_count": len(active_ids),
+        "earned_usdt": str(usdt.quantize(Decimal("0.0001"))),
+        "earned_fg": str(th.quantize(Decimal("0.01"))),
+    }
     tiers = []
-    for t in tier_qs:
+    for t in tier_list:
         claimed = t.id in claimed_ids
         tiers.append(
             {
@@ -47,7 +93,11 @@ def build_invite_achievements_payload(user: FrontendUser) -> dict:
                 "progress_target": t.invite_threshold,
             }
         )
-    return {"invited_total": invited, "tiers": tiers}
+    return {
+        "invited_total": invited,
+        "overview": overview,
+        "tiers": tiers,
+    }
 
 
 def grant_invite_achievement_rewards(wallet: Wallet, tier: InviteAchievementTier) -> dict:
@@ -130,6 +180,7 @@ def claim_invite_achievement_tier(
             },
             "granted": granted,
             "invited_total": invited,
+            "overview": build_invite_achievement_overview(user),
         },
         None,
         200,

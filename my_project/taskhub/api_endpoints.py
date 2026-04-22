@@ -129,7 +129,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET",),
         "me/invite-achievements/",
-        "活动邀请成就：后台阶梯 + 当前有效邀请人数 + 每档 locked/claimable/claimed",
+        "活动邀请成就：overview 概览 + 后台阶梯 + 有效邀请人数 + 每档 locked/claimable/claimed",
         True,
     ),
     PublicEndpoint(

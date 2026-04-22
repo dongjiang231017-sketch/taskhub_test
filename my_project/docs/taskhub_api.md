@@ -390,7 +390,17 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | 字段 | 说明 |
 | --- | --- |
 | `invited_total` | 当前有效直邀人数（整数） |
+| `overview` | 成就概览（见下表），供顶部「已完成 / 已获 USDT / 已获 FG」与总进度条 |
 | `tiers` | 数组；仅包含 **`is_active=true`** 的阶梯，按 `sort_order`、`invite_threshold`、`id` 排序 |
+
+**`overview`（成就概览）**
+
+| 字段 | 说明 |
+| --- | --- |
+| `completed_count` | 当前用户在**启用中**的阶梯里，**已领取**的档位数（与 `tiers` 中 `status` 为 `claimed` 的条数一致） |
+| `total_count` | 后台**启用中**的邀请成就阶梯总数（作分母，如 UI `completed_count/total_count`） |
+| `earned_usdt` | 字符串小数；来自钱包账变 **`invite_achievement`** 且备注**不含**「TH Coin」的入账合计（历史已领累计） |
+| `earned_fg` | 字符串小数；**与 TH 成就奖励一致**：同上账变中备注**含**「TH Coin」的入账合计；前端可展示为「已获 FG」 |
 
 **`tiers[]` 每项**
 
@@ -428,6 +438,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `tier` | `{ id, title, invite_threshold }` |
 | `granted` | `{ "usdt": "...", "th_coin": "..." }`；未发该项时为 `"0"` |
 | `invited_total` | 领取时刻的有效邀请人数 |
+| `overview` | 与 **GET** 相同结构；领取成功后便于刷新顶部成就概览 |
 
 钱包入账与签到类似：USDT 进 `balance`，TH 进 `frozen`；账变类型为 **`invite_achievement`**。
 
@@ -1228,7 +1239,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET / PATCH | `/api/v1/me/settings/notifications/` | 通知设置（占位，PATCH 暂未持久化） | 是 |
 | GET / POST | `/api/v1/me/check-in/` | 签到：GET 周历+规则；POST 今日签到（发奖，data 含 last_granted） | 是 |
 | POST | `/api/v1/me/check-in/make-up/` | 补签：body.date；先扣 makeup TH，再发与签到相同奖励；data 可有 last_spent/last_granted | 是 |
-| GET | `/api/v1/me/invite-achievements/` | 活动邀请成就：后台阶梯 + 当前有效邀请人数 + 每档 locked/claimable/claimed | 是 |
+| GET | `/api/v1/me/invite-achievements/` | 活动邀请成就：overview 概览 + 后台阶梯 + 有效邀请人数 + 每档 locked/claimable/claimed | 是 |
 | POST | `/api/v1/me/invite-achievements/claim/` | 领取邀请成就：body.tier_id；发 USDT/TH 并入账 invite_achievement | 是 |
 | GET | `/api/v1/daily-tasks/` | 每日任务：后台配置 + 当日进度 + 每档 locked/claimable/claimed（自然日零点重置） | 是 |
 | POST | `/api/v1/daily-tasks/claim/` | 领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task | 是 |
