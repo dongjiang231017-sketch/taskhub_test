@@ -48,10 +48,19 @@ def get_twitter_bearer_token() -> str:
 
 
 def get_apify_api_token() -> str:
-    v = (_row().apify_api_token or "").strip()
-    if v:
-        return v
-    return (getattr(settings, "APIFY_API_TOKEN", "") or "").strip()
+    tokens = get_apify_api_tokens()
+    return tokens[0] if tokens else ""
+
+
+def get_apify_api_tokens() -> list[str]:
+    tokens: list[str] = []
+    for value in (
+        (_row().apify_api_token or "").strip(),
+        (getattr(settings, "APIFY_API_TOKEN", "") or "").strip(),
+    ):
+        if value and value not in tokens:
+            tokens.append(value)
+    return tokens
 
 
 def get_apify_instagram_actor_id() -> str:

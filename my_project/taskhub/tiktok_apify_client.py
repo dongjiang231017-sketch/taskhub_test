@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 from .integration_config import (
     get_apify_api_token,
+    get_apify_api_tokens,
     get_apify_tiktok_actor_id,
     get_apify_tiktok_results_per_page,
     get_apify_tiktok_timeout_sec,
@@ -68,11 +69,47 @@ def _humanize_apify_tiktok_error(err: str | None) -> str:
         or "profile sorting" in low
     ):
         return "TikTok 校验服务参数配置有误，请联系管理员处理。"
+    if (
+        "authentication token is not valid" in low
+        or "invalid token" in low
+        or "unauthorized" in low
+        or "invalid api token" in low
+    ):
+        return "TikTok 校验服务鉴权失败，请联系管理员检查 Apify Token 配置。"
     if "rate limit" in low or "too many requests" in low or "quota" in low:
         return "TikTok 校验服务繁忙，请稍后再试。"
     if "apify 请求失败" in msg or "network" in low or "timed out" in low or "timeout" in low:
         return "TikTok 校验服务网络异常，请稍后再试。"
     return "暂时无法完成校验，请稍后再试。"
+
+
+def apify_tiktok_error_is_service_side(err: str | None) -> bool:
+    low = str(err or "").strip().lower()
+    if not low:
+        return True
+    return any(
+        token in low
+        for token in (
+            "authentication token is not valid",
+            "invalid token",
+            "unauthorized",
+            "invalid api token",
+            "schema",
+            "validation",
+            "profile sorting",
+            "profilesorting",
+            "rate limit",
+            "too many requests",
+            "quota",
+            "timed out",
+            "timeout",
+            "network",
+            "apify 请求失败",
+            "non json",
+            "返回非 json",
+            "返回格式异常",
+        )
+    )
 
 
 def _item_references_video_id(item: dict[str, Any], want_id: str) -> bool:
@@ -88,21 +125,25 @@ def _item_references_video_id(item: dict[str, Any], want_id: str) -> bool:
     return False
 
 
-def fetch_user_reposts_dataset_via_apify(username: str) -> tuple[list[dict[str, Any]] | None, str | None]:
-    """
-    调用 Apify run-sync-get-dataset-items，抓取该用户 profile 的 Reposts 分区若干条。
-    """
-    if not apify_tiktok_configured():
-        return None, "未配置 APIFY_API_TOKEN"
-    un = normalize_tiktok_username(username)
-    if not un:
-        return None, "无法解析 TikTok 用户名"
-    token = get_apify_api_token().strip()
-    actor_seg = _tiktok_actor_path_segment()
-    timeout_sec = get_apify_tiktok_timeout_sec()
-    results_per_page = get_apify_tiktok_results_per_page()
+def _apify_error_looks_like_auth_failure(err: str | None) -> bool:
+    low = str(err or "").strip().lower()
+    return any(
+        token in low
+        for token in (
+            "authentication token is not valid",
+            "invalid token",
+            "unauthorized",
+            "invalid api token",
+        )
+    )
 
-    payload_obj = _build_reposts_payload(un, results_per_page)
+
+def _fetch_reposts_dataset_with_token(
+    token: str,
+    actor_seg: str,
+    timeout_sec: int,
+    payload_obj: dict[str, Any],
+) -> tuple[list[dict[str, Any]] | None, str | None]:
     qs = urlencode({"token": token, "timeout": str(timeout_sec)})
     url = f"https://api.apify.com/v2/acts/{actor_seg}/run-sync-get-dataset-items?{qs}"
     payload = json.dumps(payload_obj).encode("utf-8")
@@ -138,6 +179,34 @@ def fetch_user_reposts_dataset_via_apify(username: str) -> tuple[list[dict[str, 
     if not isinstance(data, list):
         return None, "Apify 返回格式异常"
     return data, None
+
+
+def fetch_user_reposts_dataset_via_apify(username: str) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """
+    调用 Apify run-sync-get-dataset-items，抓取该用户 profile 的 Reposts 分区若干条。
+    """
+    if not apify_tiktok_configured():
+        return None, "未配置 APIFY_API_TOKEN"
+    un = normalize_tiktok_username(username)
+    if not un:
+        return None, "无法解析 TikTok 用户名"
+    actor_seg = _tiktok_actor_path_segment()
+    timeout_sec = get_apify_tiktok_timeout_sec()
+    results_per_page = get_apify_tiktok_results_per_page()
+    tokens = get_apify_api_tokens()
+
+    payload_obj = _build_reposts_payload(un, results_per_page)
+    last_err = "未配置 APIFY_API_TOKEN"
+    for idx, token in enumerate(tokens):
+        data, err = _fetch_reposts_dataset_with_token(token, actor_seg, timeout_sec, payload_obj)
+        if err is None:
+            return data, None
+        last_err = err
+        if idx < len(tokens) - 1 and _apify_error_looks_like_auth_failure(err):
+            logger.warning("Primary Apify token was rejected by TikTok actor, retrying fallback token source.")
+            continue
+        break
+    return None, last_err
 
 
 def user_reposted_video_via_apify(username: str, target_video_url: str) -> tuple[bool, str | None]:

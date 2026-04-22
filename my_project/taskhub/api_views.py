@@ -36,7 +36,11 @@ from .integration_config import get_telegram_bot_token, get_twitter_bearer_token
 from .instagram_client import normalize_instagram_username
 from .instagram_apify_client import apify_instagram_configured, profile_contains_proof_via_apify
 from .telegram_group_client import user_is_member_of_chat
-from .tiktok_apify_client import apify_tiktok_configured, user_reposted_video_via_apify
+from .tiktok_apify_client import (
+    apify_tiktok_configured,
+    apify_tiktok_error_is_service_side,
+    user_reposted_video_via_apify,
+)
 from .tiktok_client import extract_tiktok_video_id_from_url
 from .telegram_push import send_task_completion_message
 from .youtube_client import channel_about_contains_proof, normalize_youtube_channel_identifier
@@ -2078,7 +2082,8 @@ def application_tiktok_verify_api(request, application_id):
     if need_apify:
         ok, err = user_reposted_video_via_apify(ident, video_url)
         if not ok:
-            return api_error(err or "并未检测到转发，请确认已完成转发后再试。", code=4229, status=400)
+            status = 503 if apify_tiktok_error_is_service_side(err) else 400
+            return api_error(err or "并未检测到转发，请确认已完成转发后再试。", code=4229, status=status)
 
     last_holder = {"last_granted": {"granted": False, "usdt": "0", "th_coin": "0"}}
     try:
