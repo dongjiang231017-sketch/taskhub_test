@@ -295,50 +295,67 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # SimpleUI：自定义菜单链接统一用 /admin/ 前缀，避免相对路径解析错误
 SIMPLEUI_CONFIG = {
     "system_keep": False,
-    "menu_display": ["概览", "新手指南", "任务平台", "用户与系统"],
+    "menu_display": ["工作台", "内容中心", "用户增长", "任务运营", "资金结算", "系统配置"],
     "dynamic": False,
     "menus": [
         {
-            "name": "概览",
-            "icon": "fas fa-home",
+            "name": "工作台",
+            "icon": "fas fa-compass",
             "models": [
-                {"name": "管理首页", "icon": "fas fa-tachometer-alt", "url": "/admin/"},
+                {"name": "运营总览", "icon": "fas fa-gauge-high", "url": "/admin/"},
                 {
-                    "name": "系统公告",
-                    "icon": "fas fa-bullhorn",
-                    "url": "/admin/announcements/announcement/?post_type__exact=announcement",
-                },
-                {
-                    "name": "API 接口目录",
+                    "name": "接口目录",
                     "icon": "fas fa-book",
                     "url": "/api/v1/docs/",
                 },
                 {
-                    "name": "API 文档（完整页面）",
+                    "name": "接口文档",
                     "icon": "fas fa-file-alt",
                     "url": "/docs/taskhub-api/",
                 },
             ],
         },
         {
-            "name": "新手指南",
-            "icon": "fas fa-book-reader",
+            "name": "内容中心",
+            "icon": "fas fa-bullhorn",
             "models": [
+                {
+                    "name": "系统公告",
+                    "icon": "fas fa-volume-high",
+                    "url": "/admin/announcements/announcement/?post_type__exact=announcement",
+                },
                 {
                     "name": "指南分类",
                     "icon": "fas fa-tags",
                     "url": "/admin/announcements/guidecategory/",
                 },
                 {
-                    "name": "指南内容（富文本）",
+                    "name": "新手指南",
                     "icon": "fas fa-edit",
                     "url": "/admin/announcements/announcement/?post_type__exact=newbie_guide",
                 },
             ],
         },
         {
-            "name": "任务平台",
-            "icon": "fas fa-tasks",
+            "name": "用户增长",
+            "icon": "fas fa-users",
+            "models": [
+                {"name": "会员列表", "icon": "far fa-user", "url": "/admin/users/frontenduser/"},
+                {
+                    "name": "邀请成就配置",
+                    "icon": "fas fa-trophy",
+                    "url": "/admin/taskhub/inviteachievementtier/",
+                },
+                {
+                    "name": "邀请成就记录",
+                    "icon": "fas fa-medal",
+                    "url": "/admin/taskhub/inviteachievementclaim/",
+                },
+            ],
+        },
+        {
+            "name": "任务运营",
+            "icon": "fas fa-list-check",
             "models": [
                 {"name": "任务分类", "icon": "fas fa-folder-open", "url": "/admin/taskhub/taskcategory/"},
                 {"name": "任务列表", "icon": "fas fa-clipboard-list", "url": "/admin/taskhub/task/"},
@@ -348,49 +365,48 @@ SIMPLEUI_CONFIG = {
                     "icon": "fas fa-check-circle",
                     "url": "/admin/taskhub/taskcompletionrecord/",
                 },
-                {"name": "签到记录", "icon": "fas fa-calendar-alt", "url": "/admin/taskhub/checkinrecord/"},
                 {"name": "签到参数配置", "icon": "fas fa-calendar-check", "url": "/admin/taskhub/checkinconfig/"},
-                {
-                    "name": "邀请成就阶梯",
-                    "icon": "fas fa-trophy",
-                    "url": "/admin/taskhub/inviteachievementtier/",
-                },
-                {
-                    "name": "邀请成就领取记录",
-                    "icon": "fas fa-medal",
-                    "url": "/admin/taskhub/inviteachievementclaim/",
-                },
+                {"name": "签到记录", "icon": "fas fa-calendar-alt", "url": "/admin/taskhub/checkinrecord/"},
                 {
                     "name": "每日任务配置",
                     "icon": "fas fa-sun",
                     "url": "/admin/taskhub/dailytaskdefinition/",
                 },
                 {
-                    "name": "每日任务领取记录",
+                    "name": "每日任务记录",
                     "icon": "fas fa-check-double",
                     "url": "/admin/taskhub/dailytaskdayclaim/",
                 },
-                {
-                    "name": "第三方集成密钥",
-                    "icon": "fas fa-plug",
-                    "url": "/admin/taskhub/integrationsecretconfig/",
-                },
-                {"name": "API Token", "icon": "fas fa-key", "url": "/admin/taskhub/apitoken/"},
             ],
         },
         {
-            "name": "用户与系统",
-            "icon": "fas fa-user-shield",
+            "name": "资金结算",
+            "icon": "fas fa-wallet",
             "models": [
-                {"name": "会员列表", "icon": "far fa-user", "url": "/admin/users/frontenduser/"},
                 {"name": "账变记录", "icon": "fas fa-receipt", "url": "/admin/wallets/transaction/"},
                 {
                     "name": "提现申请",
                     "icon": "fas fa-money-bill-transfer",
                     "url": "/admin/wallets/withdrawalrequest/",
                 },
-                {"name": "管理员账号", "icon": "fas fa-user-cog", "url": "/admin/auth/user/"},
-                {"name": "用户组", "icon": "fas fa-users", "url": "/admin/auth/group/"},
+            ],
+        },
+        {
+            "name": "系统配置",
+            "icon": "fas fa-sliders",
+            "models": [
+                {
+                    "name": "第三方集成密钥",
+                    "icon": "fas fa-plug",
+                    "url": "/admin/taskhub/integrationsecretconfig/",
+                },
+                {
+                    "name": "接口令牌",
+                    "icon": "fas fa-key",
+                    "url": "/admin/taskhub/apitoken/",
+                },
+                {"name": "后台账号", "icon": "fas fa-user-cog", "url": "/admin/auth/user/"},
+                {"name": "权限分组", "icon": "fas fa-user-group", "url": "/admin/auth/group/"},
             ],
         },
     ],
@@ -401,9 +417,9 @@ SIMPLEUI_HOME_INFO = False
 SIMPLEUI_LOGO = "https://avatars.githubusercontent.com/u/23233045?s=200&v=4"
 
 # Django Admin 后台标题配置
-ADMIN_SITE_HEADER = "TaskHub 管理后台"
+ADMIN_SITE_HEADER = "TaskHub 运营后台"
 ADMIN_SITE_TITLE = "TaskHub"
-ADMIN_INDEX_TITLE = "任务平台与开放接口"
+ADMIN_INDEX_TITLE = "业务管理与配置中心"
 
 # 服务器本地覆盖：存在 core/local_settings.py 时加载（不依赖 .env；见 local_settings.example.py）
 try:
