@@ -3,12 +3,71 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, connections, transaction
 from django.utils import timezone
 
 from .models import Task, TaskApplication
+
+
+def _task_has_positive_display_reward(task: Task) -> bool:
+    u = task.reward_usdt if task.reward_usdt is not None else Decimal("0")
+    t = task.reward_th_coin if task.reward_th_coin is not None else Decimal("0")
+    return u > Decimal("0") or t > Decimal("0")
+
+
+def _accepted_application_truly_done(application: TaskApplication, task: Task) -> bool:
+    """与 api_views._task_application_truly_done 一致，避免 task_lifecycle 依赖 api_views 循环引用。"""
+    if application.status != TaskApplication.STATUS_ACCEPTED:
+        return False
+    if application.reward_paid_at:
+        return True
+    if not _task_has_positive_display_reward(task):
+        return True
+    return False
+
+
+def release_incomplete_applications_for_task_ids(task_ids: list[int]) -> int:
+    """
+    任务已不可接时：取消仍待处理、或已录用但未结奖的报名，释放唯一约束以便重新开放后可再次报名。
+    满员关单（completed 且 deadline 未到）不在此路径调用，以免误清仍在进行的已录用。
+    """
+    if not task_ids:
+        return 0
+    now = timezone.now()
+    n = 0
+    apps = TaskApplication.objects.filter(
+        task_id__in=task_ids,
+        status__in=(TaskApplication.STATUS_PENDING, TaskApplication.STATUS_ACCEPTED),
+    ).select_related("task")
+    for app in apps.iterator(chunk_size=500):
+        if app.status == TaskApplication.STATUS_ACCEPTED and _accepted_application_truly_done(app, app.task):
+            continue
+        updated = TaskApplication.objects.filter(
+            pk=app.pk,
+            status__in=(TaskApplication.STATUS_PENDING, TaskApplication.STATUS_ACCEPTED),
+        ).update(status=TaskApplication.STATUS_CANCELLED, decided_at=now)
+        n += int(updated)
+    return n
+
+
+def task_terminal_should_release_takers(task: Task) -> bool:
+    """
+    任务保存为「不可再接」时，是否应自动释放未完成报名者。
+    - closed / draft：始终释放。
+    - completed：仅当 deadline 已过（含到期关单）时释放；满员提前 completed 且 deadline 未到则不释放。
+    """
+    if task.status in (Task.STATUS_OPEN, Task.STATUS_IN_PROGRESS):
+        return False
+    if task.status in (Task.STATUS_CLOSED, Task.STATUS_DRAFT):
+        return True
+    if task.status == Task.STATUS_COMPLETED:
+        if task.deadline and task.deadline < timezone.now():
+            return True
+        return False
+    return False
 
 
 def is_mandatory_account_binding(task: Task) -> bool:
@@ -115,11 +174,33 @@ def expire_stale_pending_applications() -> int:
     return n
 
 
-def close_tasks_past_deadline() -> int:
-    """截止时间已过且仍为可报名的任务标记为已完成。"""
+def release_stale_takers_when_completed_deadline_passed() -> int:
+    """
+    任务已是 completed 且 deadline 已过，但报名行可能仍为 pending/accepted（例如先满员关单再到期）。
+    由 cron 与 close_tasks_past_deadline 配合调用，幂等。
+    """
     now = timezone.now()
-    return Task.objects.filter(
+    ids = list(
+        Task.objects.filter(
+            status=Task.STATUS_COMPLETED,
+            deadline__isnull=False,
+            deadline__lt=now,
+        ).values_list("pk", flat=True)
+    )
+    return release_incomplete_applications_for_task_ids(ids)
+
+
+def close_tasks_past_deadline() -> int:
+    """截止时间已过且仍为可报名的任务标记为已完成，并释放未完成报名（便于再次开放后重新接）。"""
+    now = timezone.now()
+    qs = Task.objects.filter(
         status=Task.STATUS_OPEN,
         deadline__isnull=False,
         deadline__lt=now,
-    ).update(status=Task.STATUS_COMPLETED, updated_at=now)
+    )
+    ids = list(qs.values_list("pk", flat=True))
+    if not ids:
+        return 0
+    n = Task.objects.filter(pk__in=ids).update(status=Task.STATUS_COMPLETED, updated_at=now)
+    release_incomplete_applications_for_task_ids(ids)
+    return n
