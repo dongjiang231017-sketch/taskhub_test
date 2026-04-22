@@ -13,6 +13,7 @@ from wallets.models import Transaction, Wallet
 
 from .api_views import _task_application_truly_done
 from .models import DailyTaskDayClaim, DailyTaskDefinition, TaskApplication
+from .telegram_push import send_daily_task_claim_message
 
 
 def _app_completion_local_date(app: TaskApplication, task) -> date | None:
@@ -178,18 +179,15 @@ def claim_daily_task_definition(
         wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
         granted = grant_daily_task_rewards(wallet, definition)
 
-    return (
-        {
-            "day": today.isoformat(),
-            "definition": {
-                "id": definition.id,
-                "title": definition.title,
-                "target_count": definition.target_count,
-            },
-            "granted": granted,
-            "progress_current": current,
+    payload = {
+        "day": today.isoformat(),
+        "definition": {
+            "id": definition.id,
+            "title": definition.title,
+            "target_count": definition.target_count,
         },
-        None,
-        200,
-        0,
-    )
+        "granted": granted,
+        "progress_current": current,
+    }
+    send_daily_task_claim_message(user, definition, granted)
+    return (payload, None, 200, 0)

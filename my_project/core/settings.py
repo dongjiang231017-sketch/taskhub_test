@@ -102,6 +102,10 @@ CHECK_IN_MAKEUPS_PER_WEEK = int(os.environ.get("CHECK_IN_MAKEUPS_PER_WEEK", "3")
 WITHDRAW_MIN_USDT = Decimal(os.environ.get("WITHDRAW_MIN_USDT", "2.00"))
 WITHDRAW_FEE_USDT = Decimal(os.environ.get("WITHDRAW_FEE_USDT", "0.00"))
 TELEGRAM_COMMUNITY_URL = os.environ.get("TELEGRAM_COMMUNITY_URL", "").strip()
+TELEGRAM_ANNOUNCEMENT_URL = os.environ.get("TELEGRAM_ANNOUNCEMENT_URL", "").strip()
+TELEGRAM_MINI_APP_URL = os.environ.get("TELEGRAM_MINI_APP_URL", "").strip()
+TELEGRAM_BOT_WELCOME_IMAGE_URL = os.environ.get("TELEGRAM_BOT_WELCOME_IMAGE_URL", "").strip()
+TELEGRAM_BOT_WELCOME_TEXT = os.environ.get("TELEGRAM_BOT_WELCOME_TEXT", "").replace("\\n", "\n").strip()
 
 # 排行 / 邀请：邀请落地页前缀（勿尾斜杠），如 https://t.me/YourBot?startapp= 或 https://task.example.com
 INVITE_LINK_BASE_URL = os.environ.get("INVITE_LINK_BASE_URL", "").strip()

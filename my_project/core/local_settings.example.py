@@ -50,6 +50,12 @@ DATABASES = {
 # TELEGRAM_INVITE_START_PREFIX=ref_
 # 与上同时配时，邀请链接 full_url 为 https://t.me/jiangcaiji_bot/task_hub_test?startapp=ref_…（按你 BotFather 实际短名改）
 # TELEGRAM_MINI_APP_SHORT_NAME=task_hub_test
+# Telegram 机器人欢迎 / 私聊推送（可选）
+# TELEGRAM_MINI_APP_URL=https://你的前端域名
+# TELEGRAM_COMMUNITY_URL=https://t.me/你的社群
+# TELEGRAM_ANNOUNCEMENT_URL=https://t.me/你的公告频道
+# TELEGRAM_BOT_WELCOME_IMAGE_URL=https://你的域名/path/welcome.jpg
+# TELEGRAM_BOT_WELCOME_TEXT=🎉 欢迎加入 TaskHub\n\n你好，{name}！
 # 未配 TELEGRAM_BOT_USERNAME 时可用站内或自定义前缀落地页：
 # INVITE_LINK_BASE_URL=https://task.example.com
 # INVITE_COMMISSION_RATE=0.10

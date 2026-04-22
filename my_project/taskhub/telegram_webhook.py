@@ -15,8 +15,11 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from users.models import FrontendUser
+
 from .integration_config import get_telegram_bot_token
 from .models import TelegramStartInvitePending
+from .telegram_push import send_welcome_message
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,10 @@ def _process_message(msg: dict[str, Any]) -> None:
     chat = msg.get("chat") or {}
     if chat.get("type") != "private":
         return
+    text = msg.get("text")
+    start_match = _RE_START.match((text or "").strip()) if isinstance(text, str) else None
+    if not start_match:
+        return
     from_user = msg.get("from") or {}
     tid = from_user.get("id")
     if tid is None:
@@ -55,14 +62,15 @@ def _process_message(msg: dict[str, Any]) -> None:
         telegram_id = int(tid)
     except (TypeError, ValueError):
         return
-    text = msg.get("text")
     payload = extract_start_payload_from_message_text(text)
-    if not payload:
-        return
-    TelegramStartInvitePending.objects.update_or_create(
-        telegram_id=telegram_id,
-        defaults={"start_payload": payload},
-    )
+    if payload:
+        TelegramStartInvitePending.objects.update_or_create(
+            telegram_id=telegram_id,
+            defaults={"start_payload": payload},
+        )
+    known_user = FrontendUser.objects.filter(telegram_id=telegram_id).only("telegram_id").first()
+    first_name = (from_user.get("first_name") or from_user.get("username") or "").strip() or None
+    send_welcome_message((known_user.telegram_id if known_user else telegram_id), first_name=first_name)
 
 
 @csrf_exempt

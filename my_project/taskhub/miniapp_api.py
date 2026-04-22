@@ -23,6 +23,7 @@ from .integration_config import get_telegram_bot_token
 from .models import ApiToken, CheckInConfig, CheckInRecord, TaskApplication, TelegramStartInvitePending
 from .referrals import try_bind_referrer_by_invite_code
 from .telegram_auth import validate_webapp_init_data
+from .telegram_push import send_checkin_success_message
 
 from .api_views import (
     api_error,
@@ -468,6 +469,12 @@ def my_check_in_api(request):
         CheckInRecord.objects.create(user=user, on_date=today, is_make_up=False)
     payload = _check_in_week_payload(user)
     payload["last_granted"] = granted
+    send_checkin_success_message(
+        user,
+        streak_days=int(payload.get("current_streak_days") or 0),
+        granted=granted,
+        is_makeup=False,
+    )
     return api_response(payload, message="签到成功")
 
 
@@ -527,6 +534,13 @@ def my_check_in_makeup_api(request):
         payload["last_spent"] = {"th_coin": str(cost)}
     if granted.get("usdt") != "0" or granted.get("th_coin") != "0":
         payload["last_granted"] = granted
+    send_checkin_success_message(
+        request.api_user,
+        streak_days=int(payload.get("current_streak_days") or 0),
+        granted=granted,
+        is_makeup=True,
+        spent_th_coin=cost,
+    )
     return api_response(payload, message="补签成功")
 
 

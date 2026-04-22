@@ -11,6 +11,7 @@ from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
 
 from .models import InviteAchievementClaim, InviteAchievementTier
+from .telegram_push import send_invite_achievement_claim_message
 
 
 def count_direct_invites(user: FrontendUser) -> int:
@@ -171,18 +172,15 @@ def claim_invite_achievement_tier(
         wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
         granted = grant_invite_achievement_rewards(wallet, tier)
 
-    return (
-        {
-            "tier": {
-                "id": tier.id,
-                "title": tier.title,
-                "invite_threshold": tier.invite_threshold,
-            },
-            "granted": granted,
-            "invited_total": invited,
-            "overview": build_invite_achievement_overview(user),
+    payload = {
+        "tier": {
+            "id": tier.id,
+            "title": tier.title,
+            "invite_threshold": tier.invite_threshold,
         },
-        None,
-        200,
-        0,
-    )
+        "granted": granted,
+        "invited_total": invited,
+        "overview": build_invite_achievement_overview(user),
+    }
+    send_invite_achievement_claim_message(user, tier, granted, invited_total=invited)
+    return (payload, None, 200, 0)

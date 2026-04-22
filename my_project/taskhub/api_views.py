@@ -38,6 +38,7 @@ from .instagram_apify_client import apify_instagram_configured, profile_contains
 from .telegram_group_client import user_is_member_of_chat
 from .tiktok_apify_client import apify_tiktok_configured, user_reposted_video_via_apify
 from .tiktok_client import extract_tiktok_video_id_from_url
+from .telegram_push import send_task_completion_message
 from .youtube_client import channel_about_contains_proof, normalize_youtube_channel_identifier
 from .referrals import resolve_inviter_from_start_token
 
@@ -1721,9 +1722,10 @@ def _register_task_reward_on_commit(application_pk: int, holder: dict) -> None:
         connections[DEFAULT_DB_ALIAS].close()
         try:
             with transaction.atomic():
-                app = TaskApplication.objects.select_for_update().select_related("task").get(pk=application_pk)
+                app = TaskApplication.objects.select_for_update().select_related("task", "applicant").get(pk=application_pk)
                 if app.status == TaskApplication.STATUS_ACCEPTED:
                     holder["last_granted"] = grant_task_completion_reward(app)
+                    send_task_completion_message(app, holder["last_granted"])
         except OperationalError:
             holder["last_granted"] = {
                 "granted": False,
