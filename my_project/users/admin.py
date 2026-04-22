@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q
 
 from taskhub.models import Task, TaskApplication
 
@@ -39,6 +39,7 @@ class FrontendUserAdmin(admin.ModelAdmin):
         'wallet_frozen',
         'invite_code',
         'referrer_display',
+        'invited_count_display',
         'status',
         'created_at',
     )
@@ -74,22 +75,29 @@ class FrontendUserAdmin(admin.ModelAdmin):
                 ),
             },
         ),
-        ('邀请关系', {
-            'fields': ('invite_code', 'referrer')
-        }),
+        (
+            '邀请关系',
+            {
+                'fields': ('invite_code', 'referrer', 'invited_count_summary'),
+                'description': '「直邀人数」为下级中账号启用（status=true）的人数，与全站邀请榜接口统计口径一致。',
+            },
+        ),
         ('账号状态', {
             'fields': ('status', 'created_at')
         }),
     )
     
     # 只读字段
-    readonly_fields = ('invite_code', 'created_at')
+    readonly_fields = ('invite_code', 'created_at', 'invited_count_summary')
     
     # 内嵌钱包信息，直接在用户编辑页面修改余额
     inlines = (WalletInline,)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
+        qs = qs.annotate(
+            invited_count=Count("children", filter=Q(children__status=True)),
+        )
         return qs.prefetch_related(
             Prefetch(
                 "task_applications",
@@ -140,3 +148,17 @@ class FrontendUserAdmin(admin.ModelAdmin):
             return "—"
         extra = f" @{r.telegram_username}" if (r.telegram_username or "").strip() else ""
         return f"{r.username}{extra} (#{r.id})"
+
+    @admin.display(description="直邀人数", ordering="invited_count")
+    def invited_count_display(self, obj):
+        """与 GET /api/v1/rankings/invite-leaderboard/ 口径一致：启用下级人数。"""
+        return getattr(obj, "invited_count", 0) or 0
+
+    @admin.display(description="直邀人数（启用下级）")
+    def invited_count_summary(self, obj):
+        if not obj.pk:
+            return "—（保存后显示）"
+        n = getattr(obj, "invited_count", None)
+        if n is None:
+            n = FrontendUser.objects.filter(referrer=obj, status=True).count()
+        return str(n)
