@@ -5,7 +5,7 @@ from functools import wraps
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, IntegrityError, OperationalError, connections, transaction
-from django.db.models import Case, CharField, Count, Q, Value, When
+from django.db.models import Case, CharField, Count, Exists, OuterRef, Q, Value, When
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -324,6 +324,10 @@ def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, 
         return False, 4034, "当前任务不可报名"
     existing = TaskApplication.objects.filter(task=task, applicant=user).first()
     if existing:
+        if existing.status == TaskApplication.STATUS_ACCEPTED:
+            # 入群类一旦录用即视为完成；其余沿用「已结奖/无应付奖励」判定
+            if task.interaction_type == Task.INTERACTION_JOIN_COMMUNITY or _task_application_truly_done(existing, task):
+                return False, 4101, "您已完成该任务"
         if existing.status == TaskApplication.STATUS_REJECTED:
             return False, 4036, "该任务报名已被拒绝，无法再次提交"
         # 本人已有报名：应允许继续（同步信息 / 校验），不因名额已满而误标为不可点
@@ -502,6 +506,24 @@ def tasks_center_api(request):
         if binding_platform not in valid_bp:
             return api_error("binding_platform 不合法", code=4044, status=400)
         qs = qs.filter(binding_platform=binding_platform)
+
+    if current_user:
+        has_done_for_current_user = TaskApplication.objects.filter(
+            task_id=OuterRef("pk"),
+            applicant_id=current_user.id,
+            status=TaskApplication.STATUS_ACCEPTED,
+        ).filter(
+            Q(task__interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
+            | Q(reward_paid_at__isnull=False)
+            | ~(
+                Q(task__reward_usdt__isnull=False, task__reward_usdt__gt=0)
+                | Q(task__reward_th_coin__isnull=False, task__reward_th_coin__gt=0)
+            )
+        )
+        # 可用任务排除当前用户已完成项（尤其是入群类，避免完成后仍显示在可用列表）
+        qs = qs.annotate(done_for_current_user=Exists(has_done_for_current_user)).filter(
+            done_for_current_user=False
+        )
 
     try:
         page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
