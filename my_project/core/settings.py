@@ -351,6 +351,26 @@ SIMPLEUI_CONFIG = {
                 {"name": "签到记录", "icon": "fas fa-calendar-alt", "url": "/admin/taskhub/checkinrecord/"},
                 {"name": "签到参数配置", "icon": "fas fa-calendar-check", "url": "/admin/taskhub/checkinconfig/"},
                 {
+                    "name": "邀请成就阶梯",
+                    "icon": "fas fa-trophy",
+                    "url": "/admin/taskhub/inviteachievementtier/",
+                },
+                {
+                    "name": "邀请成就领取记录",
+                    "icon": "fas fa-medal",
+                    "url": "/admin/taskhub/inviteachievementclaim/",
+                },
+                {
+                    "name": "每日任务配置",
+                    "icon": "fas fa-sun",
+                    "url": "/admin/taskhub/dailytaskdefinition/",
+                },
+                {
+                    "name": "每日任务领取记录",
+                    "icon": "fas fa-check-double",
+                    "url": "/admin/taskhub/dailytaskdayclaim/",
+                },
+                {
                     "name": "第三方集成密钥",
                     "icon": "fas fa-plug",
                     "url": "/admin/taskhub/integrationsecretconfig/",
