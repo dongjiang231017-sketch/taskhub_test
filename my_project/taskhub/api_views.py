@@ -371,6 +371,19 @@ def _my_application_brief(app: TaskApplication | None) -> dict | None:
     }
 
 
+def _mandatory_task_card_done_for_user(app: TaskApplication | None, task: Task) -> bool:
+    """
+    首页必做卡片「是否可隐藏」：
+    - 必做且不按名额关单（账号绑定 / 入群）类：用户一旦 accepted 即视为该用户侧完成，直接隐藏卡片。
+    - 其它玩法沿用既有「已结奖或无应付奖励」判定。
+    """
+    if not app or app.status != TaskApplication.STATUS_ACCEPTED:
+        return False
+    if is_mandatory_no_slot_cap(task):
+        return True
+    return _task_application_truly_done(app, task)
+
+
 def build_mandatory_task_items(current_user):
     """首页必做列表与任务中心共用。"""
     qs = list(
@@ -393,8 +406,8 @@ def build_mandatory_task_items(current_user):
     items = []
     for t in qs:
         app = app_by_task.get(t.id) if current_user else None
-        # 仅「已录用且已结奖 / 无应付奖励」才从首页必做区隐藏；接了未完成仍展示卡片便于继续校验
-        if app and app.status == TaskApplication.STATUS_ACCEPTED and _task_application_truly_done(app, t):
+        # 必做入群/绑定类按「已录用即隐藏」；其它玩法沿用「已结奖/无应付奖励」判定
+        if _mandatory_task_card_done_for_user(app, t):
             continue
         data = serialize_task(t, current_user=current_user)
         enrich_task_card_fields(t, data)
@@ -429,7 +442,9 @@ def build_mandatory_task_items(current_user):
             app = TaskApplication.objects.filter(
                 task=t, applicant=current_user, status=TaskApplication.STATUS_ACCEPTED
             ).first()
-            if not app or _task_application_truly_done(app, t):
+            if _mandatory_task_card_done_for_user(app, t):
+                continue
+            if not app:
                 continue
             data = serialize_task(t, current_user=current_user)
             enrich_task_card_fields(t, data)
