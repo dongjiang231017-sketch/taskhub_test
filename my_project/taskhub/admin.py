@@ -13,7 +13,11 @@ from .models import (
     ApiToken,
     CheckInConfig,
     CheckInRecord,
+    DailyTaskDayClaim,
+    DailyTaskDefinition,
     IntegrationSecretConfig,
+    InviteAchievementClaim,
+    InviteAchievementTier,
     Task,
     TaskApplication,
     TaskCategory,
@@ -495,8 +499,88 @@ class CheckInRecordAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
     readonly_fields = ("created_at",)
 
 
+@admin.register(DailyTaskDefinition)
+class DailyTaskDefinitionAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "sort_order",
+        "title",
+        "metric_code",
+        "target_count",
+        "reward_usdt",
+        "reward_th",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("is_active", "metric_code")
+    ordering = ("sort_order", "id")
+    fieldsets = (
+        (
+            "展示与条件",
+            {
+                "fields": ("sort_order", "title", "metric_code", "target_count", "is_active"),
+                "description": (
+                    "「当日完成任务数」口径：报名已录用且视为已完结的任务中，"
+                    "完结日落在<strong>当日自然日</strong>的条数（与任务中心「已发奖」或无展示奖励的录用一致）。"
+                ),
+            },
+        ),
+        ("奖励", {"fields": ("reward_usdt", "reward_th")}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(DailyTaskDayClaim)
+class DailyTaskDayClaimAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = ("id", "user", "definition", "on_date", "claimed_at")
+    list_filter = ("on_date", "definition")
+    search_fields = ("user__username", "user__phone", "user__invite_code")
+    raw_id_fields = ("user",)
+    readonly_fields = ("claimed_at",)
+    ordering = ("-on_date", "-id")
+
+
 @admin.register(ApiToken)
 class ApiTokenAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
     list_display = ("id", "user", "key", "created_at", "last_used_at")
     search_fields = ("user__username", "user__phone", "key")
     readonly_fields = ("key", "created_at", "last_used_at")
+
+
+@admin.register(InviteAchievementTier)
+class InviteAchievementTierAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "sort_order",
+        "title",
+        "invite_threshold",
+        "reward_usdt",
+        "reward_th",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("is_active",)
+    ordering = ("sort_order", "invite_threshold", "id")
+    fieldsets = (
+        (
+            "展示与条件",
+            {
+                "fields": ("sort_order", "title", "invite_threshold", "is_active"),
+                "description": "有效邀请人数 = 直邀下级中账号启用（status=true）的人数，与邀请榜统计一致。",
+            },
+        ),
+        ("奖励", {"fields": ("reward_usdt", "reward_th")}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(InviteAchievementClaim)
+class InviteAchievementClaimAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = ("id", "user", "tier", "claimed_at")
+    list_filter = ("tier", "claimed_at")
+    search_fields = ("user__username", "user__phone", "user__invite_code")
+    raw_id_fields = ("user",)
+    readonly_fields = ("claimed_at",)
+    ordering = ("-claimed_at",)

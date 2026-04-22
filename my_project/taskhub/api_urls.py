@@ -5,6 +5,8 @@
 
 from django.urls import path
 
+from . import activities_api
+from . import daily_tasks_api
 from . import api_views
 from . import miniapp_api
 from . import profile_center_api
@@ -41,6 +43,14 @@ urlpatterns = [
     ),
     path("me/check-in/", miniapp_api.my_check_in_api, name="taskhub-me-check-in"),
     path("me/check-in/make-up/", miniapp_api.my_check_in_makeup_api, name="taskhub-me-check-in-makeup"),
+    path("me/invite-achievements/", activities_api.me_invite_achievements_api, name="taskhub-me-invite-achievements"),
+    path(
+        "me/invite-achievements/claim/",
+        activities_api.me_invite_achievements_claim_api,
+        name="taskhub-me-invite-achievements-claim",
+    ),
+    path("daily-tasks/", daily_tasks_api.daily_tasks_list_api, name="taskhub-daily-tasks"),
+    path("daily-tasks/claim/", daily_tasks_api.daily_tasks_claim_api, name="taskhub-daily-tasks-claim"),
     path("tasks/mandatory/", miniapp_api.mandatory_tasks_api, name="taskhub-mandatory-tasks"),
     path("tasks/center/", api_views.tasks_center_api, name="taskhub-tasks-center"),
     path("rankings/platform-stats/", ranking_api.rankings_platform_stats_api, name="taskhub-rankings-platform-stats"),

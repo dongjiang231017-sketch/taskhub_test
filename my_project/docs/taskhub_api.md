@@ -372,6 +372,162 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 - `makeup_cost_th_coin`：**POST 补签**每次从用户 TH Coin 扣除；`0` 表示不扣  
 - `weekly_makeup_limit`：每自然周最多补签次数
 
+#### 2.7.6 活动邀请成就（阶梯可后台配置）
+
+与活动页「成就」中邀请人数里程碑一致：**有效邀请人数** = 当前用户的**直邀下级**中 `status=true`（账号启用）的人数，与 **`GET /api/v1/rankings/invite-leaderboard/`** / **`GET /api/v1/me/ranking/invite-overview/`** 的统计口径一致。
+
+后台在 **任务平台 → 邀请成就阶梯** 维护多行配置（排序、阈值、标题、USDT/TH 奖励、是否启用）。迁移会为全新库插入默认阈值 **5 / 10 / 20 / 50 / 100 / 200**（奖励初始为 0，可在后台修改）。
+
+##### `GET /api/v1/me/invite-achievements/`
+
+| 项 | 说明 |
+| --- | --- |
+| 方法 / 路径 | `GET /api/v1/me/invite-achievements/` |
+| 需登录 | 是 |
+
+**成功 `data`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `invited_total` | 当前有效直邀人数（整数） |
+| `tiers` | 数组；仅包含 **`is_active=true`** 的阶梯，按 `sort_order`、`invite_threshold`、`id` 排序 |
+
+**`tiers[]` 每项**
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 阶梯主键；领取时作为 `tier_id` 传入 |
+| `sort_order` | 展示排序 |
+| `title` | 成就标题（如「推荐专家」） |
+| `invite_threshold` | 需达到的有效邀请人数 |
+| `reward_usdt` / `reward_th` | 字符串小数；领取成功时按此入账（可为 `"0"`） |
+| `status` | `locked` 未达标；`claimable` 已达标未领；`claimed` 已领取 |
+| `progress_current` | 当前人数（同 `invited_total`） |
+| `progress_target` | 同 `invite_threshold` |
+
+前端映射示例：`locked` → 未完成（按钮禁用）；`claimable` → 可领取；`claimed` → 已领。
+
+##### `POST /api/v1/me/invite-achievements/claim/`
+
+| 项 | 说明 |
+| --- | --- |
+| 方法 / 路径 | `POST /api/v1/me/invite-achievements/claim/` |
+| `Content-Type` | `application/json` |
+| 需登录 | 是 |
+
+**请求体**
+
+```json
+{ "tier_id": 1 }
+```
+
+**成功 `data`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `tier` | `{ id, title, invite_threshold }` |
+| `granted` | `{ "usdt": "...", "th_coin": "..." }`；未发该项时为 `"0"` |
+| `invited_total` | 领取时刻的有效邀请人数 |
+
+钱包入账与签到类似：USDT 进 `balance`，TH 进 `frozen`；账变类型为 **`invite_achievement`**。
+
+**业务错误**
+
+| HTTP | code | 说明 |
+| --- | --- | --- |
+| 400 | 4001 | 请求体非合法 JSON |
+| 400 | 4070 | `tier_id` 不是合法整数 |
+| 404 | 4072 | 阶梯不存在 |
+| 409 | 4073 | 该档已领取 |
+| 400 | 4074 | 阶梯已停用 |
+| 400 | 4075 | 有效邀请人数未达阈值 |
+
+#### 2.7.7 每日任务（后台配置、自然日重置）
+
+与活动页「每日」Tab 一致：任务条、当日进度、TH/USDT 奖励、领取状态。**按 `TIME_ZONE` 的自然日**切换进度与可领次数；无需单独跑定时任务，跨日时由接口按「当天日期」重新计算进度与是否已领。
+
+后台在 **任务平台 → 每日任务配置** 维护多行（排序、标题、统计口径、目标数量、奖励、启用）。迁移会为全新库插入示例两条：**完成 3 个任务**、**完成 10 个任务**（奖励初始为 0，可在后台改）。
+
+**统计口径 `metric_code = platform_tasks_done_today`**
+
+当日 `progress_current` = 当前用户作为报名者、状态为**已录用**且与任务中心一致的**已完结**报名中，**完结所在自然日**等于**今天**的条数。完结判定与 **`api_views._task_application_truly_done`** 一致：已发任务奖励（`reward_paid_at` 有值），或任务未配置正数 USDT/TH 展示奖励且已录用；完结日取 **`reward_paid_at` 的本地日期**（若已发奖），否则取 **`decided_at` 或 `updated_at` 的本地日期**。
+
+##### `GET /api/v1/daily-tasks/`
+
+| 项 | 说明 |
+| --- | --- |
+| 方法 / 路径 | `GET /api/v1/daily-tasks/` |
+| 需登录 | 是 |
+
+**成功 `data`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `day` | 当前统计日 `YYYY-MM-DD`（服务器时区） |
+| `timezone` | 当前 Django 时区名字符串 |
+| `reset_note` | 人类可读说明（自然日零点起算） |
+| `summary` | 见下表 |
+| `tasks` | 数组；仅 **`is_active=true`** 的配置项 |
+
+**`summary`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `total_tasks` | 启用的每日任务条数（用于 UI「x/y 已完成」的分母 `y`） |
+| `claimed_count` | 今日已领取奖励的条数（适合作为「已完成」分子，若产品定义为「已领才算完成」） |
+| `achieved_count` | 今日已达进度阈值的任务条数（含未领；若产品用进度条聚合可参考） |
+
+**`tasks[]` 每项**
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 配置主键；领取时作为 `definition_id` |
+| `sort_order` | 展示排序 |
+| `title` | 任务标题 |
+| `metric_code` | 统计口径枚举 |
+| `target_count` | 目标数量（`progress_target`） |
+| `reward_usdt` / `reward_th` | 字符串小数 |
+| `status` | `locked` / `claimable` / `claimed`（当日维度；跨日 `claimed` 不延续） |
+| `progress_current` / `progress_target` | 当日进度与目标 |
+
+##### `POST /api/v1/daily-tasks/claim/`
+
+| 项 | 说明 |
+| --- | --- |
+| 方法 / 路径 | `POST /api/v1/daily-tasks/claim/` |
+| `Content-Type` | `application/json` |
+| 需登录 | 是 |
+
+**请求体**
+
+```json
+{ "definition_id": 1 }
+```
+
+**成功 `data`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `day` | 领取归属日 |
+| `definition` | `{ id, title, target_count }` |
+| `granted` | `{ "usdt": "...", "th_coin": "..." }` |
+| `progress_current` | 领取时刻的当日进度 |
+
+账变类型 **`daily_task`**；USDT → `balance`，TH → `frozen`。
+
+**业务错误**
+
+| HTTP | code | 说明 |
+| --- | --- | --- |
+| 400 | 4001 | 请求体非合法 JSON |
+| 400 | 4080 | `definition_id` 不是合法整数 |
+| 404 | 4081 | 配置不存在 |
+| 409 | 4082 | 今日该档已领取 |
+| 400 | 4083 | 配置已停用 |
+| 400 | 4084 | 当日进度未达 `target_count` |
+
+---
+
 ### 2.8 个人中心（提现 / 收益记录 / 提现记录 / 账号管理）
 
 对应 Stitch 设计稿 `_1`～`_5`：提现弹窗、收益记录、提现记录、账号管理、个人中心主页。  
@@ -1072,6 +1228,10 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET / PATCH | `/api/v1/me/settings/notifications/` | 通知设置（占位，PATCH 暂未持久化） | 是 |
 | GET / POST | `/api/v1/me/check-in/` | 签到：GET 周历+规则；POST 今日签到（发奖，data 含 last_granted） | 是 |
 | POST | `/api/v1/me/check-in/make-up/` | 补签：body.date；先扣 makeup TH，再发与签到相同奖励；data 可有 last_spent/last_granted | 是 |
+| GET | `/api/v1/me/invite-achievements/` | 活动邀请成就：后台阶梯 + 当前有效邀请人数 + 每档 locked/claimable/claimed | 是 |
+| POST | `/api/v1/me/invite-achievements/claim/` | 领取邀请成就：body.tier_id；发 USDT/TH 并入账 invite_achievement | 是 |
+| GET | `/api/v1/daily-tasks/` | 每日任务：后台配置 + 当日进度 + 每档 locked/claimable/claimed（自然日零点重置） | 是 |
+| POST | `/api/v1/daily-tasks/claim/` | 领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task | 是 |
 | GET | `/api/v1/me/profile/` | 当前登录用户信息 | 是 |
 | GET | `/api/v1/categories/` | 任务分类列表 | 否 |
 | GET | `/api/v1/guides/categories/` | 新手指南：分类 Tab（GuideCategory + 兼容旧 category_key；含虚拟「全部」） | 否 |

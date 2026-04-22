@@ -126,6 +126,30 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "补签：body.date；先扣 makeup TH，再发与签到相同奖励；data 可有 last_spent/last_granted",
         True,
     ),
+    PublicEndpoint(
+        ("GET",),
+        "me/invite-achievements/",
+        "活动邀请成就：后台阶梯 + 当前有效邀请人数 + 每档 locked/claimable/claimed",
+        True,
+    ),
+    PublicEndpoint(
+        ("POST",),
+        "me/invite-achievements/claim/",
+        "领取邀请成就：body.tier_id；发 USDT/TH 并入账 invite_achievement",
+        True,
+    ),
+    PublicEndpoint(
+        ("GET",),
+        "daily-tasks/",
+        "每日任务：后台配置 + 当日进度 + 每档 locked/claimable/claimed（自然日零点重置）",
+        True,
+    ),
+    PublicEndpoint(
+        ("POST",),
+        "daily-tasks/claim/",
+        "领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task",
+        True,
+    ),
     PublicEndpoint(("GET",), "me/profile/", "当前登录用户信息", True),
     PublicEndpoint(("GET",), "categories/", "任务分类列表", False),
     PublicEndpoint(

@@ -88,6 +88,8 @@ class Transaction(models.Model):
         ('check_in', '每日签到'),
         ('check_in_makeup', '补签奖励'),
         ('check_in_makeup_cost', '补签消耗'),
+        ('invite_achievement', '邀请成就奖励'),
+        ('daily_task', '每日任务奖励'),
     )
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='logs', verbose_name="所属钱包", db_comment="发生账变的钱包ID")
     amount = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="变动金额", db_comment="本次账变金额，正数增加，负数减少")

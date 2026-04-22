@@ -419,6 +419,156 @@ class CheckInRecord(models.Model):
         return f"{self.user_id} {self.on_date}"
 
 
+class DailyTaskDefinition(models.Model):
+    """
+    活动页「每日任务」：按自然日（项目时区）统计进度，零点换日；
+    达标后用户主动领取 TH/USDT（每档每人每天最多领一次）。
+    """
+
+    METRIC_PLATFORM_TASKS_DONE_TODAY = "platform_tasks_done_today"
+    METRIC_CHOICES = (
+        (
+            METRIC_PLATFORM_TASKS_DONE_TODAY,
+            "当日完成任务数（已录用且已完结：已发奖或无展示奖励且已录用）",
+        ),
+    )
+
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序", db_comment="列表顺序，越小越靠前")
+    title = models.CharField(max_length=128, verbose_name="任务标题", db_comment="如「完成 3 个任务」")
+    metric_code = models.CharField(
+        max_length=64,
+        choices=METRIC_CHOICES,
+        default=METRIC_PLATFORM_TASKS_DONE_TODAY,
+        verbose_name="统计口径",
+        db_comment="决定 progress_current 如何计算",
+    )
+    target_count = models.PositiveIntegerField(
+        default=1,
+        verbose_name="目标数量",
+        db_comment="当日进度达到该值可领取",
+    )
+    reward_usdt = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        default=Decimal("0"),
+        verbose_name="奖励 USDT",
+        db_comment="领取时入账；可为 0",
+    )
+    reward_th = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=Decimal("0"),
+        verbose_name="奖励 TH Coin",
+        db_comment="领取时入账 frozen；可为 0",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_daily_task_definition"
+        verbose_name = "每日任务配置"
+        verbose_name_plural = verbose_name
+        ordering = ("sort_order", "id")
+
+    def __str__(self):
+        return f"{self.title} ({self.get_metric_code_display()}) ≥{self.target_count}"
+
+
+class DailyTaskDayClaim(models.Model):
+    """某用户在某自然日已领取某一档每日任务奖励。"""
+
+    user = models.ForeignKey(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="daily_task_day_claims",
+        verbose_name="用户",
+        db_constraint=False,
+    )
+    definition = models.ForeignKey(
+        DailyTaskDefinition,
+        on_delete=models.CASCADE,
+        related_name="day_claims",
+        verbose_name="每日任务",
+    )
+    on_date = models.DateField(verbose_name="归属日期", db_comment="按当前激活时区的日历日")
+    claimed_at = models.DateTimeField(auto_now_add=True, verbose_name="领取时间")
+
+    class Meta:
+        db_table = "task_daily_task_day_claim"
+        verbose_name = "每日任务领取记录"
+        verbose_name_plural = verbose_name
+        unique_together = (("user", "definition", "on_date"),)
+        ordering = ("-on_date", "-id")
+
+    def __str__(self):
+        return f"user={self.user_id} def={self.definition_id} {self.on_date}"
+
+
+class InviteAchievementTier(models.Model):
+    """
+    活动页「邀请成就」阶梯：后台配置人数阈值与 USDT/TH 奖励；
+    直邀且下级 status=true 的人数达到阈值后可领取（每档每人限领一次）。
+    """
+
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序", db_comment="列表展示顺序，越小越靠前")
+    invite_threshold = models.PositiveIntegerField(verbose_name="需邀请人数", db_comment="有效直邀人数达到该值可领")
+    title = models.CharField(max_length=64, default="推荐专家", verbose_name="成就标题")
+    reward_usdt = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        default=Decimal("0"),
+        verbose_name="奖励 USDT",
+        db_comment="领取时入账钱包 USDT；可为 0",
+    )
+    reward_th = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=Decimal("0"),
+        verbose_name="奖励 TH Coin",
+        db_comment="领取时入账 TH；可为 0",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_invite_achievement_tier"
+        verbose_name = "邀请成就阶梯"
+        verbose_name_plural = verbose_name
+        ordering = ("sort_order", "invite_threshold", "id")
+
+    def __str__(self):
+        return f"{self.title} ≥{self.invite_threshold}人"
+
+
+class InviteAchievementClaim(models.Model):
+    user = models.ForeignKey(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="invite_achievement_claims",
+        verbose_name="用户",
+        db_constraint=False,
+    )
+    tier = models.ForeignKey(
+        InviteAchievementTier,
+        on_delete=models.CASCADE,
+        related_name="claims",
+        verbose_name="阶梯",
+    )
+    claimed_at = models.DateTimeField(auto_now_add=True, verbose_name="领取时间")
+
+    class Meta:
+        db_table = "task_invite_achievement_claim"
+        verbose_name = "邀请成就领取记录"
+        verbose_name_plural = verbose_name
+        unique_together = (("user", "tier"),)
+        ordering = ("-claimed_at",)
+
+    def __str__(self):
+        return f"user={self.user_id} tier={self.tier_id}"
+
+
 class TelegramStartInvitePending(models.Model):
     """
     用户通过 https://t.me/<Bot>?start=<payload> 打开 Bot 并点「启动」后，
