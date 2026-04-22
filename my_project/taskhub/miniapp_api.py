@@ -37,14 +37,63 @@ from .api_views import (
 logger = logging.getLogger(__name__)
 
 
+def _tg_text_field(tg: dict, *keys: str) -> str:
+    """读取 initData.user 字段，兼容 snake_case / camelCase。"""
+    for k in keys:
+        v = tg.get(k)
+        if v is None:
+            continue
+        t = str(v).strip()
+        if t:
+            return t
+    return ""
+
+
 def _telegram_display_name(tg: dict) -> str:
-    """Telegram 资料里展示的「名字」：first_name + last_name（与客户端设置页一致）。"""
-    fn = (tg.get("first_name") or "").strip()
-    ln = (tg.get("last_name") or "").strip()
+    """Telegram 设置页「名字」：first_name + last_name（与客户端展示一致）。"""
+    fn = _tg_text_field(tg, "first_name", "firstName")
+    ln = _tg_text_field(tg, "last_name", "lastName")
     parts = [p for p in (fn, ln) if p]
     if not parts:
         return ""
     return " ".join(parts).strip()
+
+
+def _allocate_unique_username(base: str, telegram_id: int, *, exclude_pk: int | None) -> str:
+    """exclude_pk 有值时排除该用户（已登录同步）；无值时为新建用户，排除同 telegram_id（尚不存在则等价于全表查重）。"""
+    base = (base or "").strip()[:50] or f"tg{telegram_id}"
+    candidate = base[:50]
+    n = 0
+    qs = FrontendUser.objects.all()
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    else:
+        qs = qs.exclude(telegram_id=telegram_id)
+    while qs.filter(username=candidate).exists():
+        n += 1
+        suf = f"_{n}"
+        candidate = f"{base[: 50 - len(suf)]}{suf}"
+    return candidate
+
+
+def _sync_site_username_from_telegram(
+    user: FrontendUser, tg: dict, tid: int, tg_username: str | None, *, created: bool
+) -> None:
+    """
+    只要 initData 里能拼出非空显示名，就同步到站点 username（老用户也会从 tg_xxx 改过来）。
+    若本次无显示名：仅新建用户用 @名 / tg<id> 规则写入。
+    """
+    disp = _telegram_display_name(tg)
+    if disp:
+        desired_base = " ".join(disp.split())[:50]
+    elif created:
+        desired_base = _site_username_base_from_telegram_profile(tg, tid)
+    else:
+        return
+    unique = _allocate_unique_username(desired_base, tid, exclude_pk=user.pk)
+    if user.username != unique:
+        user.username = unique
+        user.save(update_fields=["username"])
 
 
 def _site_username_fallback_handle(tg_username: str | None, telegram_id: int) -> str:
@@ -61,7 +110,7 @@ def _site_username_base_from_telegram_profile(tg: dict, telegram_id: int) -> str
     disp = _telegram_display_name(tg)
     if disp:
         return " ".join(disp.split())[:50]
-    un = (tg.get("username") or "").strip() or None
+    un = _tg_text_field(tg, "username", "Username") or None
     return _site_username_fallback_handle(un, telegram_id)
 
 
@@ -318,16 +367,15 @@ def telegram_auth_api(request):
         return api_error(f"{exc}{hint}", code=4062, status=401)
 
     tg = validated["telegram_user"]
+    if not isinstance(tg, dict):
+        return api_error("init_data 中 user 格式无效", code=4064, status=400)
     tid = int(tg["id"])
     tg_username = (tg.get("username") or "").strip() or None
-    first = (tg.get("first_name") or "").strip() or "User"
+    first_token = _tg_text_field(tg, "first_name", "firstName") or "User"
 
-    base_username = _site_username_base_from_telegram_profile(tg, tid)
-    username = base_username
-    suffix = 0
-    while FrontendUser.objects.filter(username=username).exclude(telegram_id=tid).exists():
-        suffix += 1
-        username = f"{base_username}_{suffix}"[:50]
+    disp = _telegram_display_name(tg)
+    base_for_new = " ".join(disp.split())[:50] if disp else _site_username_base_from_telegram_profile(tg, tid)
+    username = _allocate_unique_username(base_for_new, tid, exclude_pk=None)
 
     raw_pw = secrets.token_urlsafe(32)
 
@@ -345,23 +393,10 @@ def telegram_auth_api(request):
             Wallet.objects.get_or_create(user=user)
         else:
             Wallet.objects.get_or_create(user=user)
-            to_save: list[str] = []
             if tg_username and user.telegram_username != tg_username:
                 user.telegram_username = tg_username
-                to_save.append("telegram_username")
-            # 早期自动生成的 tg_xxx / tg数字 / 仅用 @ 名作用户名 → 升级为 Telegram「显示名」
-            pref = _site_username_base_from_telegram_profile(tg, tid)
-            handle_only = _site_username_fallback_handle(tg_username, tid)
-            legacy = user.username == f"tg{tid}" or (
-                tg_username
-                and user.username.lower() == f"tg_{tg_username.lower()}"[:50]
-            ) or (handle_only and user.username == handle_only)
-            if pref and pref != user.username and legacy:
-                if not FrontendUser.objects.filter(username=pref).exclude(pk=user.pk).exists():
-                    user.username = pref
-                    to_save.append("username")
-            if to_save:
-                user.save(update_fields=to_save)
+                user.save(update_fields=["telegram_username"])
+        _sync_site_username_from_telegram(user, tg, tid, tg_username, created=created)
 
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
@@ -396,7 +431,10 @@ def telegram_auth_api(request):
 
     user.refresh_from_db()
     payload_user = serialize_user(user)
-    payload_user["telegram_first_name"] = first
+    payload_user["telegram_first_name"] = first_token
+    display_name = _telegram_display_name(tg)
+    if display_name:
+        payload_user["telegram_display_name"] = display_name
     out: dict = {"token": token.key, "user": payload_user}
     if _truthy_flag(body.get("include_home") or body.get("includeHome")):
         out["home"] = _home_data_for_user(user)

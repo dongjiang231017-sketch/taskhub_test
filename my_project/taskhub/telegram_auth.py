@@ -14,10 +14,26 @@ def parse_telegram_user_from_init_data(parsed: dict[str, str]) -> dict[str, Any]
     raw = parsed.get("user")
     if not raw:
         return None
-    try:
-        return json.loads(unquote(raw))
-    except json.JSONDecodeError:
+    s = str(raw).strip()
+    data: dict[str, Any] | None = None
+    for payload in (s, unquote(s)):
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            data = obj
+            break
+    if not data:
         return None
+    # 部分客户端/中间层可能传 camelCase，与 Bot API 的 snake_case 对齐
+    if "first_name" not in data and data.get("firstName") is not None:
+        data["first_name"] = data.get("firstName")
+    if "last_name" not in data and data.get("lastName") is not None:
+        data["last_name"] = data.get("lastName")
+    if "username" not in data and data.get("Username"):
+        data["username"] = data.get("Username")
+    return data
 
 
 def validate_webapp_init_data(init_data: str, bot_token: str, *, max_age_seconds: int = 86400) -> dict[str, Any]:

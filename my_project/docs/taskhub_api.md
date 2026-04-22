@@ -123,7 +123,7 @@ Authorization: Bearer <token>
 **行为说明**：
 
 1. 使用 [Telegram Web Apps 校验规则](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) 校验 `init_data` 的 `hash` 与 `auth_date`（默认允许 86400 秒内）。
-2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）；新用户 **`username`** 优先取 Telegram **设置里的名字**（`initData` 内 `user.first_name` + `user.last_name`，与客户端「设置」页展示一致）；若无则取 **`user.username`（@ 名）**；再无则 `tg<数字ID>`。重名自动加 `_2` 等后缀。`phone` 为空，并自动创建钱包。曾用纯 @ 名或 `tg_` 前缀老规则注册的用户，下次登录在用户名未被占用时可升级为上述显示名。
+2. 按 Telegram `user.id` 查找或创建一条 `FrontendUser`（`telegram_id` 唯一）。**`username`**：优先用 **`user.first_name` + `user.last_name`**（与 Telegram「设置」里展示的名字一致；兼容 **`firstName` / `lastName`** 驼峰）；只要本次 `initData` 里能拼出非空显示名，**每次登录都会尝试写回** `FrontendUser.username`（老账号也会从 `tg_xxx` 纠正过来；与他人重名则自动加 `_2` 等后缀）。无显示名时：新建用户才用 **`user.username`（@ 名）** / `tg<id>`。`phone` 为空，并自动创建钱包。成功响应里 `user.telegram_display_name` 为上述全名（有则返回）。
 3. **推荐关系（自动绑定）**：若该用户 **`referrer` 仍为空**，按顺序尝试：
    - **`initData` 内的 `start_param`**（用户通过 **`https://t.me/<Bot>/<MiniAppShortName>?startapp=…`** 打开 Mini App 时由 Telegram 写入）；
    - POST body 的 **`invite_code` / `ref` / `inviter_invite_code`**；
@@ -152,6 +152,7 @@ Authorization: Bearer <token>
 | 400 | 4060 | 未传 `init_data` / 传了 `initDataUnsafe` 或仅展示 `user`；或非 Mini App 环境 `initData` 为空 |
 | 503 | 4061 | 服务端未配置 `TELEGRAM_BOT_TOKEN`（无法验签，无法开户） |
 | 401 | 4062 | `init_data` 签名校验失败或已过期；**Bot 与 Mini App 绑定的机器人不一致** |
+| 400 | 4064 | 验签通过后 `user` 字段不是合法 JSON 对象（极少见，多为 initData 被截断或篡改） |
 
 成功时 `data` 至少含 `token`、`user`；若请求里 `include_home: true`，另含 **`home`**（结构同 **§2.6** `me/home` 的 `data`）。
 
@@ -170,7 +171,8 @@ Authorization: Bearer <token>
     "invite_code": "ABCD1234",
     "status": true,
     "created_at": "2026-04-15T12:00:00+08:00",
-    "telegram_first_name": "大"
+    "telegram_first_name": "大",
+    "telegram_display_name": "大明西厂"
   },
   "home": {
     "user": { "id": 1, "username": "大明西厂", "telegram_id": 123456789 },
