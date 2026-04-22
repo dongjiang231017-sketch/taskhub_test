@@ -317,11 +317,17 @@ def _task_platform_key(task: Task) -> str:
 
 
 def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, int, str | None]:
-    """列表/卡片用：当前用户是否「尚有可能」发起报名（不含已存在报名的细分）；POST 仍以 task_apply 为准。"""
+    """列表/卡片用：当前用户点「开始」是否可能成功；POST 仍以 task_apply 为准。"""
     if task.publisher_id == user.id:
         return False, 4033, "不能报名自己发布的任务"
     if task.status != Task.STATUS_OPEN:
         return False, 4034, "当前任务不可报名"
+    existing = TaskApplication.objects.filter(task=task, applicant=user).first()
+    if existing:
+        if existing.status == TaskApplication.STATUS_REJECTED:
+            return False, 4036, "该任务报名已被拒绝，无法再次提交"
+        # 本人已有报名：应允许继续（同步信息 / 校验），不因名额已满而误标为不可点
+        return True, 0, None
     if not is_mandatory_no_slot_cap(task):
         if active_taker_count(task) >= effective_applicants_limit(task):
             return False, 4035, "该任务接取人数已满"

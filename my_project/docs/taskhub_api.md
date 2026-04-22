@@ -731,7 +731,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `slot_progress_percent` | number | **名额占用进度** \(min(100, accepted_count × 100 ÷ 有效需求人数)\)；有效需求人数为 `max(1, applicants_limit)`，避免后台误填 0 导致除零或进度异常 |
 | `application_count` | number | 总报名人数（**「x 人参与」**建议用此字段） |
 | `can_apply` | boolean | **任务中心 / 必做列表**返回；当前用户是否「仍可能」发起 `POST …/apply/`（不含已存在报名的细分）；未登录恒为 `false` |
-| `apply_precheck_code` | number | 与 `can_apply` 配套；`0` 表示预检通过；`4010` 未登录；`4033` 本人发布；`4034` 非可报名；`4035` 接取人数已满（与 `POST …/apply/` 常见错误码一致） |
+| `apply_precheck_code` | number | 与 `can_apply` 配套；`0` 表示预检通过；`4010` 未登录；`4033` 本人发布；`4034` 非可报名；`4035` 接取人数已满；`4036` 曾被拒绝（与 `POST …/apply/` 常见错误码一致） |
 | `apply_precheck_message` | string | 人类可读说明，便于「开始」按钮直接 `toast`；**前端应在 `can_apply===false` 时展示，勿静默失败** |
 | `mandatory_task_stale` | boolean | 可选；为 `true` 时表示本条为「已非 open 的必做 + 您曾已录用仍未完成」的补录卡片，见 **§4.0** |
 | `mandatory_task_stale_hint` | string | 与 `mandatory_task_stale` 同时出现；人类可读提示（如任务已结束、重新开放后可再报名） |
