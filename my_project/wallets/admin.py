@@ -57,9 +57,9 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
 class TransactionAdmin(admin.ModelAdmin):
     list_display = ('id', 'wallet_user', 'wallet_id', 'wallet_type', 'amount', 'before_balance', 'after_balance', 'change_type', 'created_at')
     list_display_links = ('id', 'wallet_user')
-    list_filter = ('change_type', 'created_at', 'wallet__user__membership_level', 'wallet__user__status')
+    list_filter = ('asset', 'change_type', 'created_at', 'wallet__user__membership_level', 'wallet__user__status')
     search_fields = ('wallet__user__username', 'wallet__user__phone', 'wallet__user__invite_code', 'wallet__id', 'change_type')
-    readonly_fields = ('wallet', 'amount', 'before_balance', 'after_balance', 'change_type', 'created_at', 'remark')
+    readonly_fields = ('wallet', 'asset', 'amount', 'before_balance', 'after_balance', 'change_type', 'created_at', 'remark')
 
     def wallet_user(self, obj):
         return obj.wallet.user.username
@@ -72,8 +72,6 @@ class TransactionAdmin(admin.ModelAdmin):
     wallet_id.admin_order_field = 'wallet__id'
 
     def wallet_type(self, obj):
-        remark = (obj.remark or '').lower()
-        if 'th coin' in remark or '冻结' in remark or '冻结金额' in remark:
-            return 'TH Coin'
-        return 'USDT'
+        return obj.get_asset_display()
     wallet_type.short_description = '币种'
+    wallet_type.admin_order_field = 'asset'

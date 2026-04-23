@@ -47,6 +47,7 @@ def grant_task_completion_reward(application: TaskApplication) -> dict:
     if ru > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_USDT,
             amount=ru,
             before_balance=old_b,
             after_balance=new_b,
@@ -57,6 +58,7 @@ def grant_task_completion_reward(application: TaskApplication) -> dict:
     if rt > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_TH_COIN,
             amount=rt,
             before_balance=old_f,
             after_balance=new_f,

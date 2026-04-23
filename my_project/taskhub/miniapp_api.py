@@ -139,8 +139,8 @@ def _stats_for_user(user: FrontendUser) -> dict:
 
     if wallet:
         base_q = Transaction.objects.filter(wallet=wallet)
-        usdt_inc = base_q.filter(amount__gt=0).exclude(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
-        th_inc = base_q.filter(amount__gt=0, remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+        usdt_inc = base_q.filter(amount__gt=0, asset=Transaction.ASSET_USDT).aggregate(s=Sum("amount"))["s"]
+        th_inc = base_q.filter(amount__gt=0, asset=Transaction.ASSET_TH_COIN).aggregate(s=Sum("amount"))["s"]
     else:
         usdt_inc = th_inc = None
 
@@ -216,6 +216,7 @@ def _grant_checkin_rewards(wallet: Wallet, cfg: CheckInConfig, *, makeup: bool =
     if ru > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_USDT,
             amount=ru,
             before_balance=old_b,
             after_balance=new_b,
@@ -225,6 +226,7 @@ def _grant_checkin_rewards(wallet: Wallet, cfg: CheckInConfig, *, makeup: bool =
     if rt > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_TH_COIN,
             amount=rt,
             before_balance=old_f,
             after_balance=new_f,
@@ -248,6 +250,7 @@ def _deduct_makeup_th_cost(wallet: Wallet, cost: Decimal) -> None:
     new_f = old_f - cost
     Transaction.objects.create(
         wallet=wallet,
+        asset=Transaction.ASSET_TH_COIN,
         amount=-cost,
         before_balance=old_f,
         after_balance=new_f,

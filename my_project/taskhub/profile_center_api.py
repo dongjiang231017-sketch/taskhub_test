@@ -61,17 +61,21 @@ _PLATFORM_LABELS = dict(Task.BINDING_PLATFORM_CHOICES)
 
 
 def _is_th_transaction(tx: Transaction) -> bool:
-    return "th coin" in (tx.remark or "").lower()
+    return getattr(tx, "asset", Transaction.ASSET_USDT) == Transaction.ASSET_TH_COIN
 
 
 def _tx_asset(tx: Transaction) -> str:
-    return "th_coin" if _is_th_transaction(tx) else "usdt"
+    return Transaction.ASSET_TH_COIN if _is_th_transaction(tx) else Transaction.ASSET_USDT
+
+
+def _tx_asset_label(tx: Transaction) -> str:
+    return "TH Coin" if _is_th_transaction(tx) else "USDT"
 
 
 def _format_amount_for_display(tx: Transaction) -> str:
     a = tx.amount.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
     sign = "+" if a >= 0 else ""
-    return f"{sign}{a}"
+    return f"{sign}{a} {_tx_asset_label(tx)}"
 
 
 def _ledger_label(tx: Transaction) -> str:
@@ -115,6 +119,7 @@ def _serialize_ledger_row(tx: Transaction) -> dict:
     return {
         "id": tx.id,
         "asset": asset,
+        "asset_label": _tx_asset_label(tx),
         "amount": str(tx.amount.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)),
         "amount_display": _format_amount_for_display(tx),
         "change_type": tx.change_type,
@@ -134,9 +139,9 @@ def _valid_bep20_address(addr: str) -> bool:
 def _ledger_queryset(wallet: Wallet, *, asset: str | None, days: int | None):
     qs = Transaction.objects.filter(wallet=wallet).exclude(change_type__in=_LEDGER_EXCLUDE_TYPES)
     if asset == "usdt":
-        qs = qs.exclude(remark__icontains="TH Coin")
+        qs = qs.filter(asset=Transaction.ASSET_USDT)
     elif asset == "th_coin":
-        qs = qs.filter(remark__icontains="TH Coin")
+        qs = qs.filter(asset=Transaction.ASSET_TH_COIN)
     if days is not None and days > 0:
         since = timezone.now() - dt.timedelta(days=days)
         qs = qs.filter(created_at__gte=since)
@@ -145,8 +150,8 @@ def _ledger_queryset(wallet: Wallet, *, asset: str | None, days: int | None):
 
 def _ledger_summary_all_time(wallet: Wallet) -> tuple[Decimal, Decimal]:
     base = Transaction.objects.filter(wallet=wallet).exclude(change_type__in=_LEDGER_EXCLUDE_TYPES)
-    usdt_sum = base.filter(amount__gt=0).exclude(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
-    th_sum = base.filter(amount__gt=0, remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+    usdt_sum = base.filter(amount__gt=0, asset=Transaction.ASSET_USDT).aggregate(s=Sum("amount"))["s"]
+    th_sum = base.filter(amount__gt=0, asset=Transaction.ASSET_TH_COIN).aggregate(s=Sum("amount"))["s"]
 
     def _d(v) -> Decimal:
         if v is None:
@@ -361,6 +366,7 @@ def me_withdrawals_api(request):
         new_b = (old_b - gross).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
         tx_row = Transaction.objects.create(
             wallet=w,
+            asset=Transaction.ASSET_USDT,
             amount=-gross,
             before_balance=old_b,
             after_balance=new_b,

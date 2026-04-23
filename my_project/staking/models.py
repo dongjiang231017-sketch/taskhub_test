@@ -70,6 +70,7 @@ class StakeRecord(models.Model):
             Transaction = apps.get_model('wallets', 'Transaction')
             Transaction.objects.create(
                 wallet=wallet,
+                asset=Transaction.ASSET_USDT,
                 amount=-self.amount,
                 before_balance=old_balance,
                 after_balance=wallet.balance,
@@ -107,6 +108,7 @@ class StakeRecord(models.Model):
         Transaction = apps.get_model('wallets', 'Transaction')
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_USDT,
             amount=income,
             before_balance=old_balance,
             after_balance=wallet.balance,

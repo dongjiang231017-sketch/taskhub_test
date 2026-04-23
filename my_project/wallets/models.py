@@ -41,6 +41,7 @@ class Wallet(models.Model):
                 if self.balance != Decimal('0.00'):
                     Transaction.objects.create(
                         wallet=self,
+                        asset=Transaction.ASSET_USDT,
                         amount=self.balance,
                         before_balance=Decimal('0.00'),
                         after_balance=self.balance,
@@ -50,6 +51,7 @@ class Wallet(models.Model):
                 if self.frozen != Decimal('0.00'):
                     Transaction.objects.create(
                         wallet=self,
+                        asset=Transaction.ASSET_TH_COIN,
                         amount=self.frozen,
                         before_balance=Decimal('0.00'),
                         after_balance=self.frozen,
@@ -60,6 +62,7 @@ class Wallet(models.Model):
                 if self.balance != old_balance:
                     Transaction.objects.create(
                         wallet=self,
+                        asset=Transaction.ASSET_USDT,
                         amount=self.balance - old_balance,
                         before_balance=old_balance,
                         after_balance=self.balance,
@@ -69,6 +72,7 @@ class Wallet(models.Model):
                 if self.frozen != old_frozen:
                     Transaction.objects.create(
                         wallet=self,
+                        asset=Transaction.ASSET_TH_COIN,
                         amount=self.frozen - old_frozen,
                         before_balance=old_frozen,
                         after_balance=self.frozen,
@@ -77,6 +81,12 @@ class Wallet(models.Model):
                     )
 
 class Transaction(models.Model):
+    ASSET_USDT = "usdt"
+    ASSET_TH_COIN = "th_coin"
+    ASSET_CHOICES = (
+        (ASSET_USDT, "USDT"),
+        (ASSET_TH_COIN, "TH Coin"),
+    )
     TX_TYPE = (
         ('recharge', '充值'),
         ('withdraw', '提现'),
@@ -92,6 +102,14 @@ class Transaction(models.Model):
         ('daily_task', '每日任务奖励'),
     )
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='logs', verbose_name="所属钱包", db_comment="发生账变的钱包ID")
+    asset = models.CharField(
+        max_length=16,
+        choices=ASSET_CHOICES,
+        default=ASSET_USDT,
+        db_index=True,
+        verbose_name="资产",
+        db_comment="账变归属资产：USDT 或 TH Coin，用于前台分开展示明细",
+    )
     amount = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="变动金额", db_comment="本次账变金额，正数增加，负数减少")
     before_balance = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="变动前", db_comment="变动前的钱包余额")
     after_balance = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="变动后", db_comment="变动后的钱包余额")
@@ -103,6 +121,14 @@ class Transaction(models.Model):
         verbose_name = "账变记录"
         verbose_name_plural = verbose_name
         db_table = "frontend_transaction"
+
+    def save(self, *args, **kwargs):
+        remark = (self.remark or "").lower()
+        if "th coin" in remark or "冻结" in remark:
+            self.asset = self.ASSET_TH_COIN
+        elif not self.asset:
+            self.asset = self.ASSET_USDT
+        super().save(*args, **kwargs)
 
 
 class WithdrawalRequest(models.Model):

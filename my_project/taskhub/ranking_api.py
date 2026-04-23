@@ -34,8 +34,12 @@ def _referrer_reward_usdt_sum(user: FrontendUser) -> Decimal:
     Wallet.objects.get_or_create(user=user)
     wallet = Wallet.objects.get(user=user)
     s = (
-        Transaction.objects.filter(wallet=wallet, change_type="reward", amount__gt=0)
-        .exclude(remark__icontains="TH Coin")
+        Transaction.objects.filter(
+            wallet=wallet,
+            change_type="reward",
+            amount__gt=0,
+            asset=Transaction.ASSET_USDT,
+        )
         .aggregate(s=Sum("amount"))["s"]
     )
     return _d_money(s)
@@ -52,8 +56,12 @@ def _user_task_commission_usdt(user: FrontendUser) -> Decimal:
     Wallet.objects.get_or_create(user=user)
     wallet = Wallet.objects.get(user=user)
     s = (
-        Transaction.objects.filter(wallet=wallet, change_type="task_reward", amount__gt=0)
-        .exclude(remark__icontains="TH Coin")
+        Transaction.objects.filter(
+            wallet=wallet,
+            change_type="task_reward",
+            amount__gt=0,
+            asset=Transaction.ASSET_USDT,
+        )
         .aggregate(s=Sum("amount"))["s"]
     )
     return _d_money(s)
@@ -63,8 +71,11 @@ def _commission_rank_position(user: FrontendUser) -> int:
     """佣金榜名次：严格多于本人 task_reward USDT 累计的人数 + 1。"""
     my_amt = _user_task_commission_usdt(user)
     higher = (
-        Transaction.objects.filter(change_type="task_reward", amount__gt=0)
-        .exclude(remark__icontains="TH Coin")
+        Transaction.objects.filter(
+            change_type="task_reward",
+            amount__gt=0,
+            asset=Transaction.ASSET_USDT,
+        )
         .values("wallet__user_id")
         .annotate(t=Sum("amount"))
         .filter(t__gt=my_amt)
@@ -111,8 +122,11 @@ def _platform_total_tasks() -> int:
 def _platform_total_rewards_usdt() -> Decimal:
     """全站已发放任务奖励 USDT（账变 task_reward，正数，非 TH 备注）。"""
     s = (
-        Transaction.objects.filter(change_type="task_reward", amount__gt=0)
-        .exclude(remark__icontains="TH Coin")
+        Transaction.objects.filter(
+            change_type="task_reward",
+            amount__gt=0,
+            asset=Transaction.ASSET_USDT,
+        )
         .aggregate(s=Sum("amount"))["s"]
     )
     return _d_money(s)
@@ -210,8 +224,11 @@ def rankings_commission_leaderboard_api(request):
     page_size = min(page_size, 50)
 
     base = (
-        Transaction.objects.filter(change_type="task_reward", amount__gt=0)
-        .exclude(remark__icontains="TH Coin")
+        Transaction.objects.filter(
+            change_type="task_reward",
+            amount__gt=0,
+            asset=Transaction.ASSET_USDT,
+        )
         .values("wallet__user_id")
         .annotate(task_commission_usdt=Sum("amount"))
         .order_by("-task_commission_usdt", "wallet__user_id")
@@ -329,8 +346,12 @@ def me_ranking_invite_overview_api(request):
     for ch in children:
         w, _ = Wallet.objects.get_or_create(user=ch)
         s = (
-            Transaction.objects.filter(wallet=w, change_type="task_reward", amount__gt=0)
-            .exclude(remark__icontains="TH Coin")
+            Transaction.objects.filter(
+                wallet=w,
+                change_type="task_reward",
+                amount__gt=0,
+                asset=Transaction.ASSET_USDT,
+            )
             .aggregate(s=Sum("amount"))["s"]
         )
         child_task_reward_sum += _d_money(s)

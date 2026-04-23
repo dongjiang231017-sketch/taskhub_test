@@ -29,15 +29,15 @@ def _tier_status(invited: int, claimed: bool, threshold: int) -> str:
 
 def _invite_achievement_earned_totals(user: FrontendUser) -> tuple[Decimal, Decimal]:
     """
-    从钱包账变汇总「邀请成就」已入账奖励（与发奖时 remark 规则一致）。
+    从钱包账变汇总「邀请成就」已入账奖励（按资产字段分开）。
     返回 (USDT 合计, TH 类合计)；TH 用于前端成就概览「已获 FG」等展示。
     """
     wallet = getattr(user, "wallet", None)
     if wallet is None:
         return Decimal("0"), Decimal("0")
     base = Transaction.objects.filter(wallet=wallet, change_type="invite_achievement", amount__gt=0)
-    usdt_raw = base.exclude(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
-    th_raw = base.filter(remark__icontains="TH Coin").aggregate(s=Sum("amount"))["s"]
+    usdt_raw = base.filter(asset=Transaction.ASSET_USDT).aggregate(s=Sum("amount"))["s"]
+    th_raw = base.filter(asset=Transaction.ASSET_TH_COIN).aggregate(s=Sum("amount"))["s"]
     usdt = Decimal(usdt_raw or "0")
     th = Decimal(th_raw or "0")
     return usdt, th
@@ -115,6 +115,7 @@ def grant_invite_achievement_rewards(wallet: Wallet, tier: InviteAchievementTier
     if ru > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_USDT,
             amount=ru,
             before_balance=old_b,
             after_balance=new_b,
@@ -124,6 +125,7 @@ def grant_invite_achievement_rewards(wallet: Wallet, tier: InviteAchievementTier
     if rt > 0:
         Transaction.objects.create(
             wallet=wallet,
+            asset=Transaction.ASSET_TH_COIN,
             amount=rt,
             before_balance=old_f,
             after_balance=new_f,

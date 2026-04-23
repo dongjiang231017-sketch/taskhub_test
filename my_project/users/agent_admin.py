@@ -135,6 +135,7 @@ class AgentTransactionAdmin(AgentReadonlyScopedAdmin):
         "id",
         "wallet_user",
         "wallet",
+        "asset",
         "amount",
         "before_balance",
         "after_balance",
@@ -142,7 +143,7 @@ class AgentTransactionAdmin(AgentReadonlyScopedAdmin):
         "remark",
         "created_at",
     )
-    list_filter = ("change_type", "created_at")
+    list_filter = ("asset", "change_type", "created_at")
     search_fields = ("wallet__user__username", "wallet__user__phone", "wallet__user__invite_code", "remark")
     list_select_related = ("wallet", "wallet__user")
     ordering = ("-created_at",)
