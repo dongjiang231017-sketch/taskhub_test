@@ -1,10 +1,12 @@
 from django.contrib import admin
 from django.db.models import Count, Prefetch, Q
+from django.utils.html import format_html
 
 from taskhub.models import Task, TaskApplication
 
+from .agent_scope import collect_descendant_user_ids
 from .admin_widgets import binding_modal_trigger
-from .models import FrontendUser
+from .models import AgentProfile, FrontendUser
 from wallets.models import Wallet
 
 class WalletInline(admin.StackedInline):
@@ -163,3 +165,52 @@ class FrontendUserAdmin(admin.ModelAdmin):
         if n is None:
             n = FrontendUser.objects.filter(referrer=obj, status=True).count()
         return str(n)
+
+
+@admin.register(AgentProfile)
+class AgentProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "backend_user",
+        "root_user",
+        "include_self",
+        "visible_users_count",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("is_active", "include_self", "created_at")
+    search_fields = (
+        "backend_user__username",
+        "backend_user__email",
+        "root_user__username",
+        "root_user__phone",
+        "root_user__invite_code",
+        "root_user__telegram_username",
+    )
+    raw_id_fields = ("backend_user", "root_user")
+    readonly_fields = ("agent_admin_entry", "visible_users_count", "created_at", "updated_at")
+    fieldsets = (
+        (
+            "代理绑定",
+            {
+                "fields": ("backend_user", "root_user", "include_self", "is_active"),
+                "description": (
+                    "先在「系统配置 → 后台账号」创建一个普通后台账号，再在这里绑定到某个前台会员。"
+                    "保存后该后台账号会自动开启 staff，可登录独立入口 /agent-admin/，且只能查看该会员伞下数据。"
+                ),
+            },
+        ),
+        ("入口与范围", {"fields": ("agent_admin_entry", "visible_users_count")}),
+        ("备注", {"fields": ("remark",)}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+
+    @admin.display(description="代理后台入口")
+    def agent_admin_entry(self, obj):
+        return format_html('<a href="/agent-admin/" target="_blank">打开代理后台</a>')
+
+    @admin.display(description="可见会员数")
+    def visible_users_count(self, obj):
+        if not obj.root_user_id:
+            return "—"
+        return len(collect_descendant_user_ids(obj.root_user_id, include_self=obj.include_self))

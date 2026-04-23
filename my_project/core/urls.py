@@ -23,6 +23,7 @@ from django.views.generic import RedirectView
 
 from taskhub import miniapp_api
 from taskhub.doc_html_view import openapi_discovery_json, taskhub_api_docs_html
+from users.agent_admin import agent_site
 
 # 配置后台标题
 admin.site.site_header = getattr(settings, 'ADMIN_SITE_HEADER', 'Django 管理')
@@ -44,6 +45,7 @@ urlpatterns = [
     path("api/auth/telegram/", miniapp_api.telegram_auth_api),
     path('api/v1/', include('taskhub.api_urls')),
     path('api/v1/guides/', include('announcements.api_urls')),
+    path('agent-admin/', agent_site.urls),
     path('admin/', admin.site.urls),
     path('dashboard/', include('dashboard.urls')),
     path('announcements/', include('announcements.urls')),

@@ -355,6 +355,11 @@ SIMPLEUI_CONFIG = {
                     "icon": "fas fa-medal",
                     "url": "/admin/taskhub/inviteachievementclaim/",
                 },
+                {
+                    "name": "代理后台账号",
+                    "icon": "fas fa-user-shield",
+                    "url": "/admin/users/agentprofile/",
+                },
             ],
         },
         {

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 import uuid
@@ -88,3 +89,44 @@ class FrontendUser(models.Model):
         verbose_name = "会员"
         verbose_name_plural = "会员列表"
         db_table = "frontend_user" # 强制指定数据库表名，看起来更规范
+
+
+class AgentProfile(models.Model):
+    """代理后台账号：把 Django 后台登录账号绑定到一个前台用户伞下。"""
+
+    backend_user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agent_profile",
+        verbose_name="后台登录账号",
+        db_comment="用于登录 /agent-admin/ 的 Django 后台账号；保存后会自动开启 staff。",
+    )
+    root_user = models.OneToOneField(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="agent_profile",
+        verbose_name="代理前台账号",
+        db_comment="该前台用户作为代理伞下数据根节点。",
+    )
+    include_self = models.BooleanField(
+        default=True,
+        verbose_name="包含代理本人",
+        db_comment="开启后代理后台可见根节点本人及所有下级；关闭后仅可见下级。",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    remark = models.CharField(max_length=255, blank=True, default="", verbose_name="备注")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "frontend_agent_profile"
+        verbose_name = "代理后台账号"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f"{self.backend_user} -> {self.root_user}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.backend_user_id and not self.backend_user.is_staff:
+            type(self.backend_user).objects.filter(pk=self.backend_user_id).update(is_staff=True)
