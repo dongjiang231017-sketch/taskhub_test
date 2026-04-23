@@ -97,6 +97,7 @@ class AgentProfile(models.Model):
     backend_user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
+        db_constraint=False,
         related_name="agent_profile",
         verbose_name="后台登录账号",
         db_comment="用于登录 /agent-admin/ 的 Django 后台账号；保存后会自动开启 staff。",
@@ -104,6 +105,7 @@ class AgentProfile(models.Model):
     root_user = models.OneToOneField(
         FrontendUser,
         on_delete=models.CASCADE,
+        db_constraint=False,
         related_name="agent_profile",
         verbose_name="代理前台账号",
         db_comment="该前台用户作为代理伞下数据根节点。",
