@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from django.conf import settings
+from django.db import DatabaseError
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -24,7 +25,7 @@ from .telegram_push import send_welcome_message
 
 logger = logging.getLogger(__name__)
 
-_RE_START = re.compile(r"^/start(?:@[^\s]+)?(?:\s+(?P<payload>.+))?$", re.UNICODE)
+_RE_START = re.compile(r"^/(?:start|star)(?:@[^\s]+)?(?:\s+(?P<payload>.+))?$", re.UNICODE)
 
 
 def extract_start_payload_from_message_text(text: str | None) -> str | None:
@@ -65,11 +66,22 @@ def _process_message(msg: dict[str, Any]) -> None:
         return
     payload = extract_start_payload_from_message_text(text)
     if payload:
-        TelegramStartInvitePending.objects.update_or_create(
-            telegram_id=telegram_id,
-            defaults={"start_payload": payload},
+        try:
+            TelegramStartInvitePending.objects.update_or_create(
+                telegram_id=telegram_id,
+                defaults={"start_payload": payload},
+            )
+        except DatabaseError:
+            logger.exception("telegram webhook: save start payload failed")
+    try:
+        known_user = (
+            FrontendUser.objects.filter(telegram_id=telegram_id)
+            .only("telegram_id", "preferred_language")
+            .first()
         )
-    known_user = FrontendUser.objects.filter(telegram_id=telegram_id).only("telegram_id", "preferred_language").first()
+    except DatabaseError:
+        logger.exception("telegram webhook: lookup preferred language failed")
+        known_user = None
     first_name = (from_user.get("first_name") or from_user.get("username") or "").strip() or None
     preferred_language = (
         getattr(known_user, "preferred_language", None)

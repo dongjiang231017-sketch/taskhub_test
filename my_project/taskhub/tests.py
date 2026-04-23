@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
+from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
 from taskhub.tiktok_apify_client import (
     _build_reposts_payload,
     _humanize_apify_tiktok_error,
@@ -85,3 +87,28 @@ class LocalePreferenceTests(SimpleTestCase):
 
         self.assertEqual(language, "ar")
         self.assertIsNone(payload)
+
+
+class TelegramWebhookStartTests(SimpleTestCase):
+    def test_start_payload_accepts_star_typo(self):
+        self.assertEqual(extract_start_payload_from_message_text("/star ref_ABC"), "ref_ABC")
+
+    @patch("taskhub.telegram_webhook.send_welcome_message")
+    @patch("users.models.FrontendUser.objects.filter")
+    @patch("taskhub.telegram_webhook.TelegramStartInvitePending.objects.update_or_create")
+    def test_start_still_replies_when_language_lookup_errors(self, mock_pending, mock_filter, mock_send):
+        mock_pending.side_effect = DatabaseError("missing pending table")
+        mock_filter.side_effect = DatabaseError("missing preferred_language column")
+
+        _process_message(
+            {
+                "chat": {"type": "private"},
+                "text": "/start lang_zh-CN",
+                "from": {"id": 12345, "first_name": "Ada", "language_code": "zh"},
+            }
+        )
+
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], 12345)
+        self.assertEqual(mock_send.call_args.kwargs["first_name"], "Ada")
+        self.assertEqual(mock_send.call_args.kwargs["preferred_language"], "zh-CN")
