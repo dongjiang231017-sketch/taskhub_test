@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 import uuid
 
+from taskhub.locale_prefs import DEFAULT_PREFERRED_LANGUAGE, SUPPORTED_LANGUAGE_CHOICES
+
 class FrontendUser(models.Model):
     """
     独立的前台用户表（与后台管理员完全隔离）
@@ -27,6 +29,13 @@ class FrontendUser(models.Model):
         null=True,
         verbose_name="Telegram 用户名",
         db_comment="不含 @ 的 username，可能为空",
+    )
+    preferred_language = models.CharField(
+        max_length=16,
+        choices=SUPPORTED_LANGUAGE_CHOICES,
+        default=DEFAULT_PREFERRED_LANGUAGE,
+        verbose_name="界面语言",
+        db_comment="机器人入口 / Mini App 首选语言",
     )
     password = models.CharField(max_length=128, verbose_name="登录密码", db_comment="加密存储的登录密码")
     

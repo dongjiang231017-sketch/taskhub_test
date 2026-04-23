@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
+from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.tiktok_apify_client import (
     _build_reposts_payload,
     _humanize_apify_tiktok_error,
@@ -65,3 +66,22 @@ class TikTokApifyClientTests(SimpleTestCase):
         self.assertIsNone(err)
         self.assertEqual(rows, [{"id": "demo-video"}])
         self.assertEqual(mock_fetch_with_token.call_count, 2)
+
+
+class LocalePreferenceTests(SimpleTestCase):
+    def test_normalize_preferred_language_accepts_supported_aliases(self):
+        self.assertEqual(normalize_preferred_language("zh_hans"), "zh-CN")
+        self.assertEqual(normalize_preferred_language("PT"), "pt-BR")
+        self.assertEqual(normalize_preferred_language("es-419"), "es")
+
+    def test_split_start_payload_language_extracts_language_and_keeps_other_tokens(self):
+        language, payload = split_start_payload_language("lang_ru__ref_ABC123")
+
+        self.assertEqual(language, "ru")
+        self.assertEqual(payload, "ref_ABC123")
+
+    def test_split_start_payload_language_handles_language_only_payload(self):
+        language, payload = split_start_payload_language("lang_ar")
+
+        self.assertEqual(language, "ar")
+        self.assertIsNone(payload)

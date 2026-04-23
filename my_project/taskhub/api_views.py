@@ -168,6 +168,7 @@ def serialize_user(user):
         "created_at": user.created_at.isoformat(),
         "telegram_id": user.telegram_id,
         "telegram_username": user.telegram_username,
+        "preferred_language": user.preferred_language,
     }
 
 

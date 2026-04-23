@@ -33,6 +33,7 @@ class FrontendUserAdmin(admin.ModelAdmin):
         'id',
         'username',
         'telegram_id',
+        'preferred_language',
         'membership_level',
         'task_binding_accounts',
         'wallet_balance',
@@ -67,7 +68,7 @@ class FrontendUserAdmin(admin.ModelAdmin):
         (
             'Telegram（Mini App）',
             {
-                'fields': ('telegram_id', 'telegram_username'),
+                'fields': ('telegram_id', 'telegram_username', 'preferred_language'),
                 'description': (
                     '未走 Telegram 小程序登录时通常为空。测试「入群校验」前，可将 telegram_id 填为你本人 Telegram 数字 ID（可用 @userinfobot 查询），'
                     '须与真实 Telegram 用户一致，Bot 的 getChatMember 才能判你在群内；不要填随机数。'

@@ -20,6 +20,7 @@ from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
 
 from .integration_config import get_telegram_bot_token
+from .locale_prefs import normalize_preferred_language, split_start_payload_language
 from .models import ApiToken, CheckInConfig, CheckInRecord, TaskApplication, TelegramStartInvitePending
 from .referrals import try_bind_referrer_by_invite_code
 from .telegram_auth import validate_webapp_init_data
@@ -58,6 +59,11 @@ def _telegram_display_name(tg: dict) -> str:
     if not parts:
         return ""
     return " ".join(parts).strip()
+
+
+def _preferred_language_from_tg(tg: dict) -> str | None:
+    raw = _tg_text_field(tg, "language_code", "languageCode")
+    return normalize_preferred_language(raw)
 
 
 def _allocate_unique_username(base: str, telegram_id: int, *, exclude_pk: int | None) -> str:
@@ -373,6 +379,13 @@ def telegram_auth_api(request):
     tid = int(tg["id"])
     tg_username = (tg.get("username") or "").strip() or None
     first_token = _tg_text_field(tg, "first_name", "firstName") or "User"
+    body_language = (
+        body.get("preferred_language")
+        or body.get("preferredLanguage")
+        or body.get("language")
+        or body.get("locale")
+        or ""
+    )
 
     disp = _telegram_display_name(tg)
     base_for_new = " ".join(disp.split())[:50] if disp else _site_username_base_from_telegram_profile(tg, tid)
@@ -381,12 +394,21 @@ def telegram_auth_api(request):
     raw_pw = secrets.token_urlsafe(32)
 
     with transaction.atomic():
+        pairs = validated.get("parsed_pairs") or {}
+        start_param = (pairs.get("start_param") or "").strip()
+        start_language, start_bind_payload = split_start_payload_language(start_param)
+        preferred_language = (
+            normalize_preferred_language(start_language or str(body_language or "").strip())
+            or _preferred_language_from_tg(tg)
+        )
+
         user, created = FrontendUser.objects.get_or_create(
             telegram_id=tid,
             defaults={
                 "phone": None,
                 "username": username,
                 "telegram_username": tg_username,
+                "preferred_language": preferred_language or FrontendUser._meta.get_field("preferred_language").default,
                 "password": raw_pw,
             },
         )
@@ -394,21 +416,25 @@ def telegram_auth_api(request):
             Wallet.objects.get_or_create(user=user)
         else:
             Wallet.objects.get_or_create(user=user)
+            update_fields: list[str] = []
             if tg_username and user.telegram_username != tg_username:
                 user.telegram_username = tg_username
-                user.save(update_fields=["telegram_username"])
+                update_fields.append("telegram_username")
+            if preferred_language and user.preferred_language != preferred_language:
+                user.preferred_language = preferred_language
+                update_fields.append("preferred_language")
+            if update_fields:
+                user.save(update_fields=update_fields)
         _sync_site_username_from_telegram(user, tg, tid, tg_username, created=created)
 
         if not user.status:
             return api_error("账号已被禁用", code=4063, status=403)
 
         # 推荐关系：initData.start_param / body 邀请码；若无则消费 Webhook 写入的 TelegramStartInvitePending（用户先点 t.me/bot?start=…）
-        pairs = validated.get("parsed_pairs") or {}
-        start_param = (pairs.get("start_param") or "").strip()
         body_invite = (
             (body.get("invite_code") or body.get("ref") or body.get("inviter_invite_code") or "").strip()
         )
-        raw_bind = start_param or body_invite
+        raw_bind = start_bind_payload or body_invite
         if not raw_bind:
             ttl = int(getattr(settings, "TELEGRAM_START_INVITE_PENDING_TTL_SECONDS", 604800) or 604800)
             cutoff = timezone.now() - dt.timedelta(seconds=ttl)
@@ -423,7 +449,11 @@ def telegram_auth_api(request):
                 # 常见：未执行 migrate 尚无表 taskhub_telegram_start_invite_pending，不应导致整站 Telegram 登录 500
                 logger.warning("TelegramStartInvitePending 查询失败（请执行 migrate）: %s", exc)
             if pending:
-                raw_bind = pending.start_payload
+                pending_language, pending_bind_payload = split_start_payload_language(pending.start_payload)
+                if pending_language and user.preferred_language != pending_language:
+                    user.preferred_language = pending_language
+                    user.save(update_fields=["preferred_language"])
+                raw_bind = pending_bind_payload
                 pending.delete()
         if raw_bind:
             try_bind_referrer_by_invite_code(user, raw_bind)

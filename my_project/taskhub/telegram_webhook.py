@@ -18,6 +18,7 @@ from django.views.decorators.http import require_POST
 from users.models import FrontendUser
 
 from .integration_config import get_telegram_bot_token
+from .locale_prefs import normalize_preferred_language
 from .models import TelegramStartInvitePending
 from .telegram_push import send_welcome_message
 
@@ -68,9 +69,17 @@ def _process_message(msg: dict[str, Any]) -> None:
             telegram_id=telegram_id,
             defaults={"start_payload": payload},
         )
-    known_user = FrontendUser.objects.filter(telegram_id=telegram_id).only("telegram_id").first()
+    known_user = FrontendUser.objects.filter(telegram_id=telegram_id).only("telegram_id", "preferred_language").first()
     first_name = (from_user.get("first_name") or from_user.get("username") or "").strip() or None
-    send_welcome_message((known_user.telegram_id if known_user else telegram_id), first_name=first_name)
+    preferred_language = (
+        getattr(known_user, "preferred_language", None)
+        or normalize_preferred_language(from_user.get("language_code"))
+    )
+    send_welcome_message(
+        (known_user.telegram_id if known_user else telegram_id),
+        first_name=first_name,
+        preferred_language=preferred_language,
+    )
 
 
 @csrf_exempt
