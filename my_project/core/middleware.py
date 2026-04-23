@@ -1,6 +1,7 @@
 import os
 
 from django.http import HttpResponse
+from django.shortcuts import redirect
 
 
 class SimpleCorsMiddleware:
@@ -38,3 +39,24 @@ class SimpleCorsMiddleware:
         response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
         response["Access-Control-Max-Age"] = "86400"
         return response
+
+
+class AgentAdminRedirectMiddleware:
+    """Keep scoped agent accounts out of the full administrator backend."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if (
+            request.path.startswith("/admin/")
+            and user is not None
+            and user.is_authenticated
+            and not user.is_superuser
+        ):
+            from users.agent_scope import get_agent_profile_for_request
+
+            if get_agent_profile_for_request(request) is not None:
+                return redirect("/agent-admin/")
+        return self.get_response(request)
