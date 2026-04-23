@@ -53,7 +53,6 @@ _PLATFORM_ORDER = (
     Task.BINDING_YOUTUBE,
     Task.BINDING_INSTAGRAM,
     Task.BINDING_TIKTOK,
-    Task.BINDING_FACEBOOK,
     Task.BINDING_TELEGRAM,
 )
 
@@ -437,15 +436,20 @@ def me_bound_accounts_api(request):
             .first()
         )
         open_task = _open_mandatory_binding_task(platform)
-        linked = app is not None
+        linked_by_telegram_login = platform == Task.BINDING_TELEGRAM and user.telegram_id is not None
+        linked = app is not None or linked_by_telegram_login
         display_name = None
         if app and app.bound_username:
             display_name = app.bound_username.strip()
+        elif linked_by_telegram_login:
+            display_name = f"@{user.telegram_username}" if (user.telegram_username or "").strip() else str(user.telegram_id)
         elif linked:
             display_name = user.username
 
         reward_hint = None
-        if open_task and (open_task.reward_th_coin or Decimal("0")) > Decimal("0"):
+        if linked_by_telegram_login:
+            reward_hint = None
+        elif open_task and (open_task.reward_th_coin or Decimal("0")) > Decimal("0"):
             reward_hint = f"+{open_task.reward_th_coin.normalize()} TH"
         elif open_task and (open_task.reward_usdt or Decimal("0")) > Decimal("0"):
             reward_hint = f"+{open_task.reward_usdt.normalize()} USDT"
@@ -458,7 +462,7 @@ def me_bound_accounts_api(request):
                 "platform_label": _PLATFORM_LABELS.get(platform, platform),
                 "linked": linked,
                 "display_name": display_name,
-                "bound_username": (app.bound_username if app else None) or None,
+                "bound_username": (app.bound_username if app else display_name) or None,
                 "reward_hint": reward_hint,
                 "task": (
                     {
