@@ -251,6 +251,118 @@ BOT_TEXTS: dict[str, dict[str, str]] = {
     },
 }
 
+TASK_TITLE_TEXTS: dict[str, dict[str, str]] = {
+    "telegram_join": {
+        "zh-CN": "加入 Telegram 群组",
+        "en": "Join Telegram Group",
+        "ru": "Вступить в Telegram-группу",
+        "ar": "انضم إلى مجموعة Telegram",
+        "fr": "Rejoindre le groupe Telegram",
+        "pt-BR": "Entrar no grupo do Telegram",
+        "es": "Unirse al grupo de Telegram",
+        "vi": "Tham gia nhóm Telegram",
+    },
+    "link_twitter": {
+        "zh-CN": "绑定 Twitter 账号",
+        "en": "Link Twitter Account",
+        "ru": "Привязать аккаунт Twitter",
+        "ar": "اربط حساب Twitter",
+        "fr": "Lier le compte Twitter",
+        "pt-BR": "Vincular conta do Twitter",
+        "es": "Vincular cuenta de Twitter",
+        "vi": "Liên kết tài khoản Twitter",
+    },
+    "bind_tiktok": {
+        "zh-CN": "绑定 TikTok 账号",
+        "en": "Bind TikTok Account",
+        "ru": "Привязать аккаунт TikTok",
+        "ar": "اربط حساب TikTok",
+        "fr": "Lier le compte TikTok",
+        "pt-BR": "Vincular conta do TikTok",
+        "es": "Vincular cuenta de TikTok",
+        "vi": "Liên kết tài khoản TikTok",
+    },
+    "bind_youtube": {
+        "zh-CN": "绑定 YouTube 频道",
+        "en": "Bind YouTube Channel",
+        "ru": "Привязать канал YouTube",
+        "ar": "اربط قناة YouTube",
+        "fr": "Lier la chaîne YouTube",
+        "pt-BR": "Vincular canal do YouTube",
+        "es": "Vincular canal de YouTube",
+        "vi": "Liên kết kênh YouTube",
+    },
+    "bind_instagram": {
+        "zh-CN": "绑定 Instagram 账号",
+        "en": "Bind Instagram Account",
+        "ru": "Привязать аккаунт Instagram",
+        "ar": "اربط حساب Instagram",
+        "fr": "Lier le compte Instagram",
+        "pt-BR": "Vincular conta do Instagram",
+        "es": "Vincular cuenta de Instagram",
+        "vi": "Liên kết tài khoản Instagram",
+    },
+    "bind_facebook": {
+        "zh-CN": "绑定 Facebook 账号",
+        "en": "Bind Facebook Account",
+        "ru": "Привязать аккаунт Facebook",
+        "ar": "اربط حساب Facebook",
+        "fr": "Lier le compte Facebook",
+        "pt-BR": "Vincular conta do Facebook",
+        "es": "Vincular cuenta de Facebook",
+        "vi": "Liên kết tài khoản Facebook",
+    },
+    "daily_3": {
+        "zh-CN": "完成 3 个任务",
+        "en": "Complete 3 Tasks",
+        "ru": "Выполнить 3 задания",
+        "ar": "أكمل 3 مهام",
+        "fr": "Terminer 3 tâches",
+        "pt-BR": "Concluir 3 tarefas",
+        "es": "Completar 3 tareas",
+        "vi": "Hoàn thành 3 nhiệm vụ",
+    },
+    "daily_10": {
+        "zh-CN": "完成 10 个任务",
+        "en": "Complete 10 Tasks",
+        "ru": "Выполнить 10 заданий",
+        "ar": "أكمل 10 مهام",
+        "fr": "Terminer 10 tâches",
+        "pt-BR": "Concluir 10 tarefas",
+        "es": "Completar 10 tareas",
+        "vi": "Hoàn thành 10 nhiệm vụ",
+    },
+    "referral_expert": {
+        "zh-CN": "推荐专家",
+        "en": "Referral Expert",
+        "ru": "Эксперт по приглашениям",
+        "ar": "خبير الإحالات",
+        "fr": "Expert en parrainage",
+        "pt-BR": "Especialista em indicações",
+        "es": "Experto en referidos",
+        "vi": "Chuyên gia giới thiệu",
+    },
+}
+
+TASK_TITLE_ALIASES: dict[str, str] = {
+    "加入 telegram 群组": "telegram_join",
+    "加入 telegram 群": "telegram_join",
+    "join telegram group": "telegram_join",
+    "link twitter account": "link_twitter",
+    "绑定 twitter 账号": "link_twitter",
+    "绑定推特账号": "link_twitter",
+    "绑定 x 账号": "link_twitter",
+    "绑定 tiktok 账号": "bind_tiktok",
+    "绑定 youtube 频道": "bind_youtube",
+    "绑定 youtube 账号": "bind_youtube",
+    "绑定 instagram 账号": "bind_instagram",
+    "绑定 ins 账号": "bind_instagram",
+    "绑定 facebook 账号": "bind_facebook",
+    "完成 3 个任务": "daily_3",
+    "完成 10 个任务": "daily_10",
+    "推荐专家": "referral_expert",
+}
+
 
 def _clean_text(value: Any) -> str:
     if value is None:
@@ -268,6 +380,19 @@ def _bot_text(language: str | None, key: str, **params: Any) -> str:
     if not params:
         return template
     return template.format(**params)
+
+
+def _bot_dynamic_title(title: Any, language: str | None) -> str:
+    text = _clean_text(title)
+    if not text:
+        return ""
+    normalized = " ".join(text.replace("Tleagram", "Telegram").split()).lower()
+    alias = TASK_TITLE_ALIASES.get(normalized)
+    if not alias:
+        return text.replace("Tleagram", "Telegram")
+    code = _language_code(language)
+    rows = TASK_TITLE_TEXTS.get(alias) or {}
+    return rows.get(code) or rows.get(DEFAULT_PREFERRED_LANGUAGE) or text
 
 
 def _preferred_language_for_user(user: FrontendUser | None, fallback: str | None = None) -> str:
@@ -511,7 +636,7 @@ def send_task_completion_message(application, granted: dict[str, Any] | None) ->
     lines = [
         _bot_text(language, "task_done_title"),
         "",
-        _bot_text(language, "task_label", task=application.task.title),
+        _bot_text(language, "task_label", task=_bot_dynamic_title(application.task.title, language)),
     ]
     usdt = _to_decimal((granted or {}).get("usdt", "0"))
     th_coin = _to_decimal((granted or {}).get("th_coin", "0"))
@@ -563,7 +688,7 @@ def send_daily_task_claim_message(user: FrontendUser, definition, granted: dict[
     lines = [
         _bot_text(language, "daily_reward_title"),
         "",
-        _bot_text(language, "task_label", task=definition.title),
+        _bot_text(language, "task_label", task=_bot_dynamic_title(definition.title, language)),
     ]
     usdt = _to_decimal((granted or {}).get("usdt", "0"))
     th_coin = _to_decimal((granted or {}).get("th_coin", "0"))
@@ -590,7 +715,7 @@ def send_invite_achievement_claim_message(
     lines = [
         _bot_text(language, "invite_reward_title"),
         "",
-        _bot_text(language, "achievement_label", title=tier.title),
+        _bot_text(language, "achievement_label", title=_bot_dynamic_title(tier.title, language)),
         _bot_text(language, "effective_invites", count=max(0, int(invited_total or 0))),
     ]
     usdt = _to_decimal((granted or {}).get("usdt", "0"))

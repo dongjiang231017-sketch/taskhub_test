@@ -11,7 +11,7 @@ from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
 
 from .models import InviteAchievementClaim, InviteAchievementTier
-from .telegram_push import send_invite_achievement_claim_message
+from .telegram_push import _bot_dynamic_title, send_invite_achievement_claim_message
 
 
 def count_direct_invites(user: FrontendUser) -> int:
@@ -85,7 +85,7 @@ def build_invite_achievements_payload(user: FrontendUser) -> dict:
             {
                 "id": t.id,
                 "sort_order": t.sort_order,
-                "title": t.title,
+                "title": _bot_dynamic_title(t.title, getattr(user, "preferred_language", None)),
                 "invite_threshold": t.invite_threshold,
                 "reward_usdt": str(t.reward_usdt),
                 "reward_th": str(t.reward_th),
@@ -175,7 +175,7 @@ def claim_invite_achievement_tier(
     payload = {
         "tier": {
             "id": tier.id,
-            "title": tier.title,
+            "title": _bot_dynamic_title(tier.title, getattr(user, "preferred_language", None)),
             "invite_threshold": tier.invite_threshold,
         },
         "granted": granted,

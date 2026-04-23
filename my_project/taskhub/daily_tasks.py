@@ -13,7 +13,7 @@ from wallets.models import Transaction, Wallet
 
 from .api_views import _task_application_truly_done
 from .models import DailyTaskDayClaim, DailyTaskDefinition, TaskApplication
-from .telegram_push import send_daily_task_claim_message
+from .telegram_push import _bot_dynamic_title, send_daily_task_claim_message
 
 
 def _app_completion_local_date(app: TaskApplication, task) -> date | None:
@@ -81,7 +81,7 @@ def build_daily_tasks_payload(user: FrontendUser) -> dict:
             {
                 "id": d.id,
                 "sort_order": d.sort_order,
-                "title": d.title,
+                "title": _bot_dynamic_title(d.title, getattr(user, "preferred_language", None)),
                 "metric_code": d.metric_code,
                 "target_count": d.target_count,
                 "reward_usdt": str(d.reward_usdt),
@@ -183,7 +183,7 @@ def claim_daily_task_definition(
         "day": today.isoformat(),
         "definition": {
             "id": definition.id,
-            "title": definition.title,
+            "title": _bot_dynamic_title(definition.title, getattr(user, "preferred_language", None)),
             "target_count": definition.target_count,
         },
         "granted": granted,

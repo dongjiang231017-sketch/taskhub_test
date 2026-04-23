@@ -42,7 +42,7 @@ from .tiktok_apify_client import (
     user_reposted_video_via_apify,
 )
 from .tiktok_client import extract_tiktok_video_id_from_url
-from .telegram_push import send_task_completion_message
+from .telegram_push import _bot_dynamic_title, send_task_completion_message
 from .youtube_client import channel_about_contains_proof, normalize_youtube_channel_identifier
 from .referrals import resolve_inviter_from_start_token
 
@@ -257,9 +257,10 @@ def serialize_task(task, current_user=None, include_contact=False):
     if application_count is None:
         application_count = task.applications.count()
     can_view_contact = include_contact or (current_user and current_user.id == task.publisher_id)
+    language = getattr(current_user, "preferred_language", None) if current_user is not None else None
     data = {
         "id": task.id,
-        "title": task.title,
+        "title": _bot_dynamic_title(task.title, language),
         "description": task.description,
         "status": task.status,
         "status_display": task.get_status_display(),
@@ -703,15 +704,16 @@ def _task_record_reward_strings(task: Task) -> dict:
     return rewards
 
 
-def serialize_task_record_item(app: TaskApplication):
+def serialize_task_record_item(app: TaskApplication, user: FrontendUser | None = None):
     task = app.task
+    language = getattr(user, "preferred_language", None) if user is not None else None
     record_status = app.record_status
     dt, time_label = _task_record_time_fields(app, record_status)
     iso, disp = _format_task_record_time(dt)
     return {
         "id": app.id,
         "task_id": task.id,
-        "title": task.title,
+        "title": _bot_dynamic_title(task.title, language),
         "platform_key": _task_platform_key(task),
         "icon_url": None,
         "record_status": record_status,
@@ -1675,7 +1677,7 @@ def my_task_records_api(request):
     total = qs.count()
     offset = (page - 1) * page_size
     rows = list(qs.order_by("-updated_at", "-id")[offset : offset + page_size])
-    items = [serialize_task_record_item(a) for a in rows]
+    items = [serialize_task_record_item(a, request.api_user) for a in rows]
 
     return api_response(
         {

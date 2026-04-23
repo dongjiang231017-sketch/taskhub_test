@@ -25,7 +25,7 @@ SUPPORTED_LANGUAGE_META: dict[str, dict[str, str]] = {
         "label": "العربية",
         "bot_label": "🇸🇦 العربية",
         "intl": "ar",
-        "dir": "rtl",
+        "dir": "ltr",
     },
     "fr": {
         "label": "Français",
