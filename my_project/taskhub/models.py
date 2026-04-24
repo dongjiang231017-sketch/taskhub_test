@@ -50,6 +50,7 @@ class Task(models.Model):
     INTERACTION_NONE = "none"
     INTERACTION_ACCOUNT_BINDING = "account_binding"
     INTERACTION_FOLLOW = "follow"
+    INTERACTION_LIKE = "like"
     INTERACTION_COMMENT = "comment"
     INTERACTION_WATCH_VIDEO = "watch_video"
     INTERACTION_EXTERNAL_VOTE = "external_vote"
@@ -59,6 +60,7 @@ class Task(models.Model):
         (INTERACTION_ACCOUNT_BINDING, "账号绑定（首页「绑定 Twitter/TikTok…」卡片）"),
         (INTERACTION_JOIN_COMMUNITY, "加入社群（如 Telegram 入群/频道）"),
         (INTERACTION_FOLLOW, "关注"),
+        (INTERACTION_LIKE, "点赞"),
         (INTERACTION_COMMENT, "评论"),
         (INTERACTION_WATCH_VIDEO, "观看视频"),
         (INTERACTION_EXTERNAL_VOTE, "外部网页投票"),
@@ -142,8 +144,8 @@ class Task(models.Model):
         choices=BINDING_PLATFORM_CHOICES,
         default=BINDING_PLATFORM_NONE,
         blank=True,
-        verbose_name="绑定平台",
-        db_comment="仅当必做类型为账号绑定时使用",
+        verbose_name="目标平台",
+        db_comment="账号绑定 / 关注 / 点赞类任务使用；决定前台图标与平台校验文案",
     )
     verification_mode = models.CharField(
         max_length=32,
@@ -203,8 +205,17 @@ class Task(models.Model):
         from django.core.exceptions import ValidationError
 
         super().clean()
-        if self.interaction_type == self.INTERACTION_ACCOUNT_BINDING and not self.binding_platform:
-            raise ValidationError({"binding_platform": "必做类型为「账号绑定」时必须选择绑定平台。"})
+        if self.interaction_type in {
+            self.INTERACTION_ACCOUNT_BINDING,
+            self.INTERACTION_FOLLOW,
+            self.INTERACTION_LIKE,
+        } and not self.binding_platform:
+            label = {
+                self.INTERACTION_ACCOUNT_BINDING: "账号绑定",
+                self.INTERACTION_FOLLOW: "关注",
+                self.INTERACTION_LIKE: "点赞",
+            }.get(self.interaction_type, "当前玩法")
+            raise ValidationError({"binding_platform": f"必做类型为「{label}」时必须选择目标平台。"})
         if self.interaction_type == self.INTERACTION_JOIN_COMMUNITY:
             link = (self.interaction_config or {}).get("invite_link") or (self.interaction_config or {}).get(
                 "telegram_invite_link"
@@ -219,7 +230,11 @@ class Task(models.Model):
     def save(self, *args, **kwargs):
         if self.interaction_type == self.INTERACTION_JOIN_COMMUNITY:
             self.binding_platform = self.BINDING_PLATFORM_NONE
-        elif self.interaction_type != self.INTERACTION_ACCOUNT_BINDING:
+        elif self.interaction_type not in {
+            self.INTERACTION_ACCOUNT_BINDING,
+            self.INTERACTION_FOLLOW,
+            self.INTERACTION_LIKE,
+        }:
             self.binding_platform = self.BINDING_PLATFORM_NONE
         if self.interaction_type == self.INTERACTION_NONE:
             self.verification_mode = None
@@ -243,7 +258,12 @@ class Task(models.Model):
             }:
                 return self.VERIFY_PROFILE_LINK
             return self.VERIFY_USER_SELF
-        if self.interaction_type in (self.INTERACTION_FOLLOW, self.INTERACTION_COMMENT, self.INTERACTION_JOIN_COMMUNITY):
+        if self.interaction_type in (
+            self.INTERACTION_FOLLOW,
+            self.INTERACTION_LIKE,
+            self.INTERACTION_COMMENT,
+            self.INTERACTION_JOIN_COMMUNITY,
+        ):
             return self.VERIFY_USER_SELF
         if self.interaction_type in (self.INTERACTION_WATCH_VIDEO, self.INTERACTION_EXTERNAL_VOTE):
             return self.VERIFY_SCREENSHOT

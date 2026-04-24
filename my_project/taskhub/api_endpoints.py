@@ -269,6 +269,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     ),
     PublicEndpoint(
         ("POST",),
+        "me/applications/<int:application_id>/verify-social-action/",
+        "关注 / 点赞 / 评论类任务：用户完成站外动作后手动确认完成并自动录用",
+        True,
+    ),
+    PublicEndpoint(
+        ("POST",),
         "me/applications/<int:application_id>/verify-telegram-group/",
         "加入 Telegram 群任务：Bot getChatMember 校验已入群（须 TELEGRAM_BOT_TOKEN + 任务配置 telegram_chat_id）",
         True,

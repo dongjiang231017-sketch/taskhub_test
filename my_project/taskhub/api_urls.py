@@ -109,6 +109,11 @@ urlpatterns = [
         name="taskhub-application-verify-tiktok",
     ),
     path(
+        "me/applications/<int:application_id>/verify-social-action/",
+        api_views.application_social_action_verify_api,
+        name="taskhub-application-verify-social-action",
+    ),
+    path(
         "me/applications/<int:application_id>/verify-telegram-group/",
         api_views.application_telegram_group_verify_api,
         name="taskhub-application-verify-telegram-group",

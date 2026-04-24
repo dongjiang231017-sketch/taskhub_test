@@ -22,12 +22,13 @@ def _newbie_qs():
 
 
 def _cover_url(request, a: Announcement):
-    if not a.cover:
-        return None
-    try:
-        return request.build_absolute_uri(a.cover.url)
-    except Exception:
-        return a.cover.url
+    if a.cover:
+        try:
+            return request.build_absolute_uri(a.cover.url)
+        except Exception:
+            return a.cover.url
+    external = (a.external_cover_url or "").strip()
+    return external or None
 
 
 def _video_url(request, a: Announcement):

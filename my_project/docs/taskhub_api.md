@@ -778,11 +778,12 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `account_binding` | 账号绑定；**具体平台必须再看** `binding_platform` |
 | `join_community` | 加入社群（如 Telegram 入群/频道） |
 | `follow` | 关注 |
+| `like` | 点赞 |
 | `comment` | 评论 |
 | `watch_video` | 观看视频 |
 | `external_vote` | 外部网页投票 |
 
-**`binding_platform` 取值**（**仅当** `interaction_type === "account_binding"` 时有意义；其它类型一般为 `null` 或空字符串）
+**`binding_platform` 取值**（账号绑定 / 关注 / 点赞类任务会用到；其它类型一般为 `null` 或空字符串）
 
 `twitter` · `youtube` · `instagram` · `tiktok` · `facebook` · `telegram`
 
@@ -791,7 +792,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 **校验动作（由后端根据任务配置计算，前端据此调对应接口）**
 
 - **`binding_verify_action`**：账号绑定类需要用户调用的校验，如 `verify-twitter`；无则为 `null`。
-- **`interaction_verify_action`**：非「账号绑定」类、但需要用户主动调接口的校验，如入群 **`verify-telegram-group`**；无则为 `null`。
+- **`interaction_verify_action`**：非「账号绑定」类、但需要用户主动调接口的校验，如入群 **`verify-telegram-group`**、社交任务 **`verify-social-action`**；无则为 `null`。
 
 详见上文 **§4.0** 与各 **`POST …/verify-*/`** 小节。
 
@@ -823,9 +824,9 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 }
 ```
 
-**必做任务（可选）**：`interaction_type` 取值 `none`（默认）、`account_binding`、`join_community`、`follow`、`comment`、`watch_video`、`external_vote`。账号绑定时须带 `binding_platform`：`twitter` / `youtube` / `instagram` / `tiktok` / `facebook` / `telegram`。**加入 Telegram 群**须配 `invite_link` / `telegram_invite_link`；若需服务端校验在群内，再加 `telegram_chat_id`。`verification_mode` 可省略，后端会按类型给默认；也可显式传 `user_self_confirm`、`profile_link_proof`、`screenshot_review`。`interaction_config` 示例：推特 `{"target_tweet_url":"https://…/status/123","require_retweet":true,"require_follow":false,"target_follow_username":""}`（`require_retweet` 省略且配置了 `target_tweet_url` 时默认 `true`）；TikTok `{"target_video_url":"https://www.tiktok.com/@…/video/数字ID","require_repost":true}`；YouTube `{"youtube_proof_link":"https://…"}`；入群校验 `{"invite_link":"https://t.me/+xxxx","telegram_chat_id":"-1001234567890"}`。
+**必做任务（可选）**：`interaction_type` 取值 `none`（默认）、`account_binding`、`join_community`、`follow`、`like`、`comment`、`watch_video`、`external_vote`。账号绑定 / 关注 / 点赞类任务须带 `binding_platform`：`twitter` / `youtube` / `instagram` / `tiktok` / `facebook` / `telegram`。**加入 Telegram 群**须配 `invite_link` / `telegram_invite_link`；若需服务端校验在群内，再加 `telegram_chat_id`。`verification_mode` 可省略，后端会按类型给默认；也可显式传 `user_self_confirm`、`profile_link_proof`、`screenshot_review`。`interaction_config` 示例：推特 `{"target_tweet_url":"https://…/status/123","require_retweet":true,"require_follow":false,"target_follow_username":""}`（`require_retweet` 省略且配置了 `target_tweet_url` 时默认 `true`）；Instagram 关注 `{"target_profile_url":"https://www.instagram.com/taskhub_official/"}`；Instagram 点赞 `{"target_post_url":"https://www.instagram.com/p/ABCDEF12345/"}`；TikTok 关注 `{"target_profile_url":"https://www.tiktok.com/@taskhub_official"}`；TikTok 点赞 `{"target_video_url":"https://www.tiktok.com/@taskhub_official/video/1234567890123456789"}`；YouTube `{"youtube_proof_link":"https://…"}`；入群校验 `{"invite_link":"https://t.me/+xxxx","telegram_chat_id":"-1001234567890"}`。
 
-**任务详情/列表中的校验字段**：`binding_verify_action` 仅用于 **账号绑定**（如 `verify-twitter`）；**`interaction_verify_action`** 用于其它需用户主动调接口的自动校验（当前为 **`verify-telegram-group`**，对应加入群任务）。无校验时为 `null`。
+**任务详情/列表中的校验字段**：`binding_verify_action` 仅用于 **账号绑定**（如 `verify-twitter`）；**`interaction_verify_action`** 用于其它需用户主动调接口的自动校验（当前为 **`verify-telegram-group`** 与 **`verify-social-action`**）。无校验时为 `null`。
 
 ### 4.3 任务详情
 

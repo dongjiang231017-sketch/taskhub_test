@@ -231,3 +231,53 @@ class AgentAdminLoginTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("agent_admin:login"), response.headers["Location"])
+
+
+class SocialActionTaskTests(TestCase):
+    def test_social_action_verify_completes_pending_follow_task(self):
+        publisher = FrontendUser.objects.create(
+            username="social_publisher",
+            phone="13800000031",
+            password="pass123456",
+        )
+        applicant = FrontendUser.objects.create(
+            username="social_user",
+            phone="13800000032",
+            password="pass123456",
+        )
+        token = ApiToken.issue_for_user(applicant)
+        task = Task.objects.create(
+            publisher=publisher,
+            title="关注 Instagram",
+            description="打开链接后关注官方账号",
+            interaction_type=Task.INTERACTION_FOLLOW,
+            binding_platform=Task.BINDING_INSTAGRAM,
+            interaction_config={"target_profile_url": "https://www.instagram.com/taskhub_official/"},
+            reward_usdt=Decimal("0.50"),
+            reward_th_coin=Decimal("1.00"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        application.refresh_from_db()
+        self.assertEqual(application.status, TaskApplication.STATUS_ACCEPTED)
+        payload = response.json()["data"]["application"]
+        self.assertEqual(payload["interaction_verify_action"], "verify-social-action")
+        self.assertEqual(
+            payload["verification_reference_url"],
+            "https://www.instagram.com/taskhub_official/",
+        )

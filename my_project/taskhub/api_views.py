@@ -193,6 +193,25 @@ def binding_reference_url(task: Task) -> str | None:
     if task.interaction_type == Task.INTERACTION_JOIN_COMMUNITY:
         s = (cfg.get("invite_link") or cfg.get("telegram_invite_link") or "").strip()
         return s or None
+    if task.interaction_type in {
+        Task.INTERACTION_FOLLOW,
+        Task.INTERACTION_LIKE,
+        Task.INTERACTION_COMMENT,
+    }:
+        for key in (
+            "target_like_url",
+            "target_post_url",
+            "instagram_post_url",
+            "target_profile_url",
+            "tiktok_profile_url",
+            "target_tweet_url",
+            "target_video_url",
+            "target_url",
+        ):
+            s = (cfg.get(key) or "").strip()
+            if s:
+                return s
+        return None
     if task.interaction_type != Task.INTERACTION_ACCOUNT_BINDING or not task.binding_platform:
         return None
     bp = task.binding_platform
@@ -246,10 +265,23 @@ def _join_community_telegram_verify_enabled(task: Task) -> bool:
     return True
 
 
+def _interaction_supports_explicit_self_verify(task: Task) -> bool:
+    return (
+        task.verification_mode == Task.VERIFY_USER_SELF
+        and task.interaction_type in {
+            Task.INTERACTION_FOLLOW,
+            Task.INTERACTION_LIKE,
+            Task.INTERACTION_COMMENT,
+        }
+    )
+
+
 def interaction_verify_action(task: Task) -> str | None:
     """非账号绑定类、但需要用户主动调接口完成校验时的路径后缀（如 verify-telegram-group）。"""
     if _join_community_telegram_verify_enabled(task):
         return "verify-telegram-group"
+    if _interaction_supports_explicit_self_verify(task):
+        return "verify-social-action"
     return None
 
 
@@ -583,6 +615,15 @@ def serialize_application(application, request=None):
         "id": application.id,
         "task_id": application.task_id,
         "task_title": application.task.title if hasattr(application, "task") else None,
+        "verification_reference_url": (
+            binding_reference_url(application.task) if hasattr(application, "task") else None
+        ),
+        "binding_verify_action": (
+            binding_verify_action(application.task) if hasattr(application, "task") else None
+        ),
+        "interaction_verify_action": (
+            interaction_verify_action(application.task) if hasattr(application, "task") else None
+        ),
         "applicant": {
             "id": application.applicant_id,
             "username": application.applicant.username,
@@ -2127,6 +2168,60 @@ def application_tiktok_verify_api(request, application_id):
     application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
     last_granted = last_holder["last_granted"]
     msg = "TikTok 绑定校验通过，任务已完成"
+    if last_granted.get("reason") == "db_error":
+        msg += "；奖励入账失败：" + last_granted.get("message", "")
+    elif last_granted.get("granted"):
+        msg += f"；已发放奖励 USDT {last_granted.get('usdt')} / TH {last_granted.get('th_coin')}"
+    elif last_granted.get("reason") == "no_reward_configured":
+        msg += "（本任务未配置奖励金额，钱包无变动）"
+    return api_response(
+        {"application": serialize_application(application, request), "last_granted": last_granted},
+        message=msg,
+    )
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["POST"])
+def application_social_action_verify_api(request, application_id):
+    """
+    关注 / 点赞 / 评论类任务：用户完成站外动作后显式点击「我已完成」。
+    当前按用户自确认流转；如需自动校验，可后续按平台扩展到 Twitter API / Apify。
+    """
+    try:
+        application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
+    except TaskApplication.DoesNotExist:
+        return api_error("报名记录不存在", code=4300, status=404)
+
+    if application.applicant_id != request.api_user.id:
+        return api_error("只能校验自己的报名", code=4301, status=403)
+
+    task = application.task
+    if not _interaction_supports_explicit_self_verify(task):
+        return api_error("该报名不属于可自行确认完成的社交任务", code=4302, status=400)
+
+    if task.status in (Task.STATUS_DRAFT, Task.STATUS_CLOSED):
+        return api_error("任务已下线，无法校验", code=4303, status=400)
+    if task.status == Task.STATUS_COMPLETED and task.deadline and task.deadline < timezone.now():
+        return api_error("任务已到期结束，无法校验", code=4304, status=400)
+
+    if application.status != TaskApplication.STATUS_PENDING:
+        return api_error("当前报名已处理，无需再次校验", code=4305, status=400)
+
+    last_holder = {"last_granted": {"granted": False, "usdt": "0", "th_coin": "0"}}
+    try:
+        with transaction.atomic():
+            application = TaskApplication.objects.select_for_update().get(pk=application.pk)
+            if application.status != TaskApplication.STATUS_PENDING:
+                return api_error("报名状态已变更，请刷新页面", code=4306, status=409)
+            _auto_accept_after_binding_verify(application)
+            _register_task_reward_on_commit(application_id, last_holder)
+    except OperationalError:
+        return api_error("系统繁忙，请稍后再试。", code=4307, status=500)
+
+    application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
+    last_granted = last_holder["last_granted"]
+    msg = "校验通过，任务已完成"
     if last_granted.get("reason") == "db_error":
         msg += "；奖励入账失败：" + last_granted.get("message", "")
     elif last_granted.get("granted"):

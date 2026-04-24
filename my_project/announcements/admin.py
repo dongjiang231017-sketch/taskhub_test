@@ -83,7 +83,10 @@ class AnnouncementAdmin(admin.ModelAdmin):
         ),
         (
             "通用",
-            {"fields": ("title", "slug", "cover", "author_name")},
+            {
+                "fields": ("title", "slug", "cover", "external_cover_url", "author_name"),
+                "description": "封面优先使用本地上传；未上传时前台会回退到「封面外链」。",
+            },
         ),
         (
             "新手指南专用",

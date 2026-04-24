@@ -61,6 +61,13 @@ class Announcement(models.Model):
         verbose_name=_("封面图片"),
         db_comment="指南列表卡片图；可为空",
     )
+    external_cover_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        verbose_name=_("封面外链"),
+        db_comment="未上传本地封面时可填写外链；前台优先本地图片，其次此外链",
+    )
     excerpt = models.CharField(
         max_length=500,
         blank=True,
