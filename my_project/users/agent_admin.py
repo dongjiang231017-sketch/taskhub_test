@@ -1,6 +1,12 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.admin import AdminSite
+from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.db.models import Count
+from django.db.models import Q
+from django.http import HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import reverse
 
 from staking.models import StakeRecord
 from taskhub.models import (
@@ -13,11 +19,40 @@ from taskhub.models import (
 from wallets.models import Transaction, Wallet, WithdrawalRequest
 
 from .agent_scope import (
+    AGENT_ROOT_USER_SESSION_KEY,
     describe_agent_scope,
     filter_queryset_by_agent_users,
     get_agent_profile_for_request,
 )
-from .models import FrontendUser
+from .models import AgentProfile, FrontendUser
+
+
+class AgentAdminLoginForm(forms.Form):
+    account = forms.CharField(label="前台会员账号", max_length=150)
+    password = forms.CharField(label="登录密码", widget=forms.PasswordInput(render_value=False))
+
+    def __init__(self, *args, **kwargs):
+        self.agent_profile = None
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        account = (cleaned_data.get("account") or "").strip()
+        password = cleaned_data.get("password") or ""
+        if not account or not password:
+            raise forms.ValidationError("账号和密码不能为空。")
+
+        profile = (
+            AgentProfile.objects.select_related("root_user", "backend_user")
+            .filter(is_active=True, root_user__status=True)
+            .filter(Q(root_user__username__iexact=account) | Q(root_user__phone=account))
+            .first()
+        )
+        if profile is None or not profile.root_user.verify_password(password):
+            raise forms.ValidationError("账号或密码错误。")
+
+        self.agent_profile = profile
+        return cleaned_data
 
 
 class AgentAdminSite(AdminSite):
@@ -25,6 +60,7 @@ class AgentAdminSite(AdminSite):
     site_title = "代理后台"
     index_title = "伞下数据中心"
     site_url = None
+    login_template = "agent_admin/login.html"
 
     def has_permission(self, request):
         user = request.user
@@ -38,6 +74,44 @@ class AgentAdminSite(AdminSite):
         context = super().each_context(request)
         context["agent_scope_summary"] = describe_agent_scope(request)
         return context
+
+    def login(self, request, extra_context=None):
+        if self.has_permission(request):
+            return HttpResponseRedirect(reverse("agent_admin:index"))
+
+        form = AgentAdminLoginForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            profile = form.agent_profile
+            backend_user = profile.ensure_backend_user()
+            if backend_user is None:
+                form.add_error(None, "代理账号初始化失败，请返回总后台重新保存一次代理配置。")
+            else:
+                if profile.backend_user_id != backend_user.pk:
+                    AgentProfile.objects.filter(pk=profile.pk).update(backend_user=backend_user)
+                    profile.backend_user = backend_user
+                backend_user.backend = "django.contrib.auth.backends.ModelBackend"
+                auth_login(request, backend_user)
+                request.session[AGENT_ROOT_USER_SESSION_KEY] = profile.root_user_id
+                target = (
+                    request.POST.get("next")
+                    or request.GET.get("next")
+                    or reverse("agent_admin:index")
+                )
+                return HttpResponseRedirect(target)
+
+        context = {
+            **self.each_context(request),
+            "title": "代理后台登录",
+            "form": form,
+            "next": request.GET.get("next", ""),
+            **(extra_context or {}),
+        }
+        return TemplateResponse(request, self.login_template, context)
+
+    def logout(self, request, extra_context=None):
+        request.session.pop(AGENT_ROOT_USER_SESSION_KEY, None)
+        auth_logout(request)
+        return HttpResponseRedirect(reverse("agent_admin:login"))
 
     def index(self, request, extra_context=None):
         extra_context = {"title": describe_agent_scope(request), **(extra_context or {})}

@@ -171,8 +171,8 @@ class FrontendUserAdmin(admin.ModelAdmin):
 class AgentProfileAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "backend_user",
         "root_user",
+        "agent_login_account",
         "include_self",
         "visible_users_count",
         "is_active",
@@ -180,23 +180,28 @@ class AgentProfileAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active", "include_self", "created_at")
     search_fields = (
-        "backend_user__username",
-        "backend_user__email",
         "root_user__username",
         "root_user__phone",
         "root_user__invite_code",
         "root_user__telegram_username",
     )
-    raw_id_fields = ("backend_user", "root_user")
-    readonly_fields = ("agent_admin_entry", "visible_users_count", "created_at", "updated_at")
+    raw_id_fields = ("root_user",)
+    readonly_fields = (
+        "agent_login_account",
+        "agent_admin_entry",
+        "visible_users_count",
+        "created_at",
+        "updated_at",
+    )
     fieldsets = (
         (
-            "代理绑定",
+            "代理开通",
             {
-                "fields": ("backend_user", "root_user", "include_self", "is_active"),
+                "fields": ("root_user", "agent_login_account", "include_self", "is_active"),
                 "description": (
-                    "先在「系统配置 → 后台账号」创建一个普通后台账号，再在这里绑定到某个前台会员。"
-                    "保存后该后台账号会自动开启 staff，可登录独立入口 /agent-admin/，且只能查看该会员伞下数据。"
+                    "直接为某个前台会员开通代理后台。"
+                    "代理登录时使用该会员自己的 <strong>用户名 / 手机号 + 前台登录密码</strong>，"
+                    "系统会自动维护内部桥接账号，无需再去「后台账号」里手工创建。"
                 ),
             },
         ),
@@ -208,6 +213,10 @@ class AgentProfileAdmin(admin.ModelAdmin):
     @admin.display(description="代理后台入口")
     def agent_admin_entry(self, obj):
         return format_html('<a href="/agent-admin/" target="_blank">打开代理后台</a>')
+
+    @admin.display(description="代理登录账号")
+    def agent_login_account(self, obj):
+        return obj.login_identity
 
     @admin.display(description="可见会员数")
     def visible_users_count(self, obj):

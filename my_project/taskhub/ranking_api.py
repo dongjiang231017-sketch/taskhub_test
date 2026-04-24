@@ -19,6 +19,7 @@ from wallets.models import Transaction, Wallet
 from .api_views import api_error, api_response, parse_positive_int, require_api_login
 from .models import Task, TaskApplication
 from .profile_center_api import _rank_position
+from .referral_config import get_referral_reward_rate
 
 _MONEY_QUANT = Decimal("0.01")
 
@@ -175,9 +176,7 @@ def _invite_link_for_user(user: FrontendUser, request) -> dict:
 
 
 def _commission_rate() -> dict:
-    r = getattr(settings, "INVITE_COMMISSION_RATE", Decimal("0.10"))
-    if not isinstance(r, Decimal):
-        r = Decimal(str(r))
+    r = get_referral_reward_rate()
     pct = int((r * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     return {"decimal": str(r), "percent": pct, "label": f"{pct}% 返佣"}
 

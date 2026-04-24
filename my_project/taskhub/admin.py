@@ -18,6 +18,7 @@ from .models import (
     IntegrationSecretConfig,
     InviteAchievementClaim,
     InviteAchievementTier,
+    ReferralRewardConfig,
     Task,
     TaskApplication,
     TaskCategory,
@@ -408,6 +409,42 @@ class CheckInConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return not CheckInConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ReferralRewardConfig)
+class ReferralRewardConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = ("id", "direct_invite_rate", "updated_at")
+    fieldsets = (
+        (
+            "返佣规则",
+            {
+                "fields": ("direct_invite_rate",),
+                "description": (
+                    "下级完成任务并实际到账 <strong>USDT 任务奖励</strong> 后，"
+                    "系统按此比例自动给上级发放「推荐奖励」。例如 <code>0.10</code> 表示 10%。"
+                ),
+            },
+        ),
+        ("系统", {"fields": ("updated_at",)}),
+    )
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        try:
+            return not ReferralRewardConfig.objects.exists()
+        except ProgrammingError:
+            return False
+
+    def changelist_view(self, request, extra_context=None):
+        try:
+            obj = ReferralRewardConfig.get()
+        except ProgrammingError:
+            messages.error(request, "请先执行：python manage.py migrate")
+            return redirect(reverse("admin:index"))
+        return redirect(reverse("admin:taskhub_referralrewardconfig_change", args=[obj.pk]))
 
     def has_delete_permission(self, request, obj=None):
         return False

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 import uuid
@@ -92,23 +93,25 @@ class FrontendUser(models.Model):
 
 
 class AgentProfile(models.Model):
-    """代理后台账号：把 Django 后台登录账号绑定到一个前台用户伞下。"""
+    """代理后台账号：为某个前台会员开通代理权限，并自动维护内部桥接 staff 账号。"""
 
     backend_user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         db_constraint=False,
         related_name="agent_profile",
-        verbose_name="后台登录账号",
-        db_comment="用于登录 /agent-admin/ 的 Django 后台账号；保存后会自动开启 staff。",
+        verbose_name="系统桥接账号",
+        db_comment="系统自动维护的 Django staff 账号，用于承载 /agent-admin/ 后台会话。",
     )
     root_user = models.OneToOneField(
         FrontendUser,
         on_delete=models.CASCADE,
         db_constraint=False,
         related_name="agent_profile",
-        verbose_name="代理前台账号",
-        db_comment="该前台用户作为代理伞下数据根节点。",
+        verbose_name="代理前台会员",
+        db_comment="该前台用户既是代理后台登录身份，也是伞下数据根节点。",
     )
     include_self = models.BooleanField(
         default=True,
@@ -126,9 +129,48 @@ class AgentProfile(models.Model):
         verbose_name_plural = verbose_name
 
     def __str__(self):
-        return f"{self.backend_user} -> {self.root_user}"
+        return f"{self.root_user} -> 代理后台"
+
+    @staticmethod
+    def backend_username_for_root_user(root_user_id: int) -> str:
+        return f"agent_member_{root_user_id}"
+
+    @property
+    def login_identity(self) -> str:
+        if not self.root_user_id:
+            return "—"
+        phone = (self.root_user.phone or "").strip()
+        if phone:
+            return f"{self.root_user.username} / {phone}"
+        return self.root_user.username
+
+    def ensure_backend_user(self):
+        if not self.root_user_id:
+            return None
+
+        User = get_user_model()
+        desired_username = self.backend_username_for_root_user(self.root_user_id)
+        user = self.backend_user
+        if user is None:
+            user, _ = User.objects.get_or_create(username=desired_username)
+        elif user.username != desired_username:
+            replacement = User.objects.filter(username=desired_username).exclude(pk=user.pk).first()
+            user = replacement or user
+            user.username = desired_username
+
+        user.first_name = (self.root_user.username or "")[:150]
+        user.last_name = "Agent"
+        user.email = ""
+        user.is_staff = True
+        user.is_superuser = False
+        user.is_active = self.is_active
+        user.set_unusable_password()
+        user.save()
+        return user
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        if self.backend_user_id and not self.backend_user.is_staff:
-            type(self.backend_user).objects.filter(pk=self.backend_user_id).update(is_staff=True)
+        backend_user = self.ensure_backend_user()
+        if backend_user is not None and self.backend_user_id != backend_user.pk:
+            type(self).objects.filter(pk=self.pk).update(backend_user=backend_user)
+            self.backend_user = backend_user

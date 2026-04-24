@@ -9,6 +9,7 @@ from django.utils import timezone
 from wallets.models import Transaction, Wallet
 
 from .models import TaskApplication
+from .referral_config import get_referral_reward_rate
 
 _MONEY_QUANT = Decimal("0.01")
 
@@ -18,6 +19,44 @@ def _to_wallet_decimal(value: Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0.00")
     return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+def _grant_referrer_reward(application: TaskApplication, task_reward_usdt: Decimal) -> Decimal:
+    """
+    下级完成任务后，上级按后台配置比例拿推荐奖励。
+    当前仅对 USDT 任务奖励发放推荐奖励，保持与排行榜 / 邀请收益展示口径一致。
+    """
+
+    user = application.applicant
+    referrer = getattr(user, "referrer", None)
+    if referrer is None or task_reward_usdt <= 0:
+        return Decimal("0.00")
+
+    rate = get_referral_reward_rate()
+    if rate <= 0:
+        return Decimal("0.00")
+
+    reward = (task_reward_usdt * rate).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    if reward <= 0:
+        return Decimal("0.00")
+
+    Wallet.objects.get_or_create(user=referrer)
+    wallet = Wallet.objects.select_for_update().get(user=referrer)
+    old_balance = wallet.balance
+    new_balance = (old_balance + reward).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+    Transaction.objects.create(
+        wallet=wallet,
+        asset=Transaction.ASSET_USDT,
+        amount=reward,
+        before_balance=old_balance,
+        after_balance=new_balance,
+        change_type="reward",
+        remark=f"推荐奖励：{user.username} 完成任务 {application.task.title}"[:250],
+    )
+    wallet.balance = new_balance
+    wallet.save(create_transaction=False)
+    return reward
 
 
 def grant_task_completion_reward(application: TaskApplication) -> dict:
@@ -42,7 +81,7 @@ def grant_task_completion_reward(application: TaskApplication) -> dict:
     new_b = (old_b + max(ru, Decimal("0"))).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
     new_f = (old_f + max(rt, Decimal("0"))).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
 
-    out = {"granted": True, "usdt": "0", "th_coin": "0"}
+    out = {"granted": True, "usdt": "0", "th_coin": "0", "referrer_reward_usdt": "0"}
 
     if ru > 0:
         Transaction.objects.create(
@@ -70,6 +109,10 @@ def grant_task_completion_reward(application: TaskApplication) -> dict:
     wallet.balance = new_b
     wallet.frozen = new_f
     wallet.save(create_transaction=False)
+
+    referrer_reward = _grant_referrer_reward(application, ru)
+    if referrer_reward > 0:
+        out["referrer_reward_usdt"] = str(referrer_reward)
 
     now = timezone.now()
     TaskApplication.objects.filter(pk=application.pk).update(reward_paid_at=now)

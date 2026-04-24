@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f7fb;
+      --panel: #ffffff;
+      --line: #d8e3ef;
+      --text: #17324d;
+      --muted: #66809b;
+      --brand: #0b84d8;
+      --brand-dark: #086caf;
+      --danger: #cc3d3d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(11, 132, 216, 0.12), transparent 32%),
+        linear-gradient(180deg, #f7fbff 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+    .card {
+      width: min(100%, 420px);
+      background: var(--panel);
+      border: 1px solid rgba(9, 45, 74, 0.08);
+      border-radius: 22px;
+      box-shadow: 0 24px 64px rgba(17, 54, 90, 0.12);
+      padding: 30px 28px 24px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(11, 132, 216, 0.1);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    h1 {
+      margin: 18px 0 8px;
+      font-size: 28px;
+      line-height: 1.15;
+    }
+    .desc {
+      margin: 0 0 24px;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+    .field { margin-bottom: 16px; }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 15px;
+      font-size: 15px;
+      color: var(--text);
+      background: #fbfdff;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    input:focus {
+      border-color: rgba(11, 132, 216, 0.8);
+      box-shadow: 0 0 0 4px rgba(11, 132, 216, 0.12);
+    }
+    .errors {
+      margin: 0 0 18px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(204, 61, 61, 0.08);
+      color: var(--danger);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .footer {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <form class="card" method="post">
+    {% csrf_token %}
+    {% if next %}
+      <input type="hidden" name="next" value="{{ next }}">
+    {% endif %}
+    <div class="badge">AGENT ADMIN</div>
+    <h1>代理后台登录</h1>
+    <p class="desc">使用已开通代理权限的前台会员账号登录。支持输入用户名或手机号，密码使用该会员自己的前台登录密码。</p>
+
+    {% if form.non_field_errors %}
+      <div class="errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="field">
+      <label for="{{ form.account.id_for_label }}">前台会员账号</label>
+      {{ form.account }}
+    </div>
+    <div class="field">
+      <label for="{{ form.password.id_for_label }}">登录密码</label>
+      {{ form.password }}
+    </div>
+    <button type="submit">登录代理后台</button>
+    <div class="footer">如无法登录，请先在总后台“代理后台账号”里为该会员开通权限。</div>
+  </form>
+</body>
+</html>

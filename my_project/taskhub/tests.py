@@ -1,9 +1,20 @@
 from unittest.mock import patch
 
+from decimal import Decimal
+
+from django.test import TestCase
+from django.urls import reverse
+
+from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
+from users.models import AgentProfile, FrontendUser
+from wallets.models import Transaction, Wallet
+
 from django.db import DatabaseError
 from django.test import SimpleTestCase
 
+from taskhub.models import ReferralRewardConfig, Task, TaskApplication
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
+from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
 from taskhub.tiktok_apify_client import (
     _build_reposts_payload,
@@ -112,3 +123,75 @@ class TelegramWebhookStartTests(SimpleTestCase):
         self.assertEqual(mock_send.call_args.args[0], 12345)
         self.assertEqual(mock_send.call_args.kwargs["first_name"], "Ada")
         self.assertEqual(mock_send.call_args.kwargs["preferred_language"], "zh-CN")
+
+
+class ReferralRewardTests(TestCase):
+    def test_task_reward_also_grants_referrer_reward_from_admin_config(self):
+        referrer = FrontendUser.objects.create(username="parent_agent", phone="13800000001", password="pass123456")
+        child = FrontendUser.objects.create(
+            username="child_member",
+            phone="13800000002",
+            password="pass123456",
+            referrer=referrer,
+        )
+        publisher = FrontendUser.objects.create(username="publisher_1", phone="13800000003", password="pass123456")
+        task = Task.objects.create(
+            publisher=publisher,
+            title="测试任务",
+            description="desc",
+            reward_usdt=Decimal("12.00"),
+            reward_th_coin=Decimal("2.00"),
+            applicants_limit=1,
+            status=Task.STATUS_OPEN,
+        )
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=child,
+            status=TaskApplication.STATUS_ACCEPTED,
+            quoted_price="0.00",
+        )
+        ReferralRewardConfig.objects.create(direct_invite_rate="0.2500")
+
+        result = grant_task_completion_reward(app)
+
+        child_wallet = Wallet.objects.get(user=child)
+        referrer_wallet = Wallet.objects.get(user=referrer)
+        self.assertEqual(str(child_wallet.balance), "12.00")
+        self.assertEqual(str(child_wallet.frozen), "2.00")
+        self.assertEqual(str(referrer_wallet.balance), "3.00")
+        self.assertEqual(result["referrer_reward_usdt"], "3.00")
+        self.assertTrue(
+            Transaction.objects.filter(
+                wallet=referrer_wallet,
+                change_type="reward",
+                asset=Transaction.ASSET_USDT,
+                amount="3.00",
+            ).exists()
+        )
+
+
+class AgentAdminLoginTests(TestCase):
+    def test_agent_profile_uses_frontend_member_credentials_to_login(self):
+        root_user = FrontendUser.objects.create(
+            username="agent_owner",
+            phone="13800000011",
+            password="pass123456",
+        )
+        profile = AgentProfile.objects.create(root_user=root_user, include_self=True, is_active=True)
+
+        self.assertIsNotNone(profile.backend_user_id)
+        self.assertEqual(profile.backend_user.username, f"agent_member_{root_user.id}")
+        self.assertTrue(profile.backend_user.is_staff)
+        self.assertFalse(profile.backend_user.has_usable_password())
+
+        response = self.client.post(
+            reverse("agent_admin:login"),
+            {"account": "agent_owner", "password": "pass123456"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], reverse("agent_admin:index"))
+        session = self.client.session
+        self.assertEqual(session[AGENT_ROOT_USER_SESSION_KEY], root_user.id)
+        home = self.client.get(reverse("agent_admin:index"))
+        self.assertEqual(home.status_code, 200)

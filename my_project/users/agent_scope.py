@@ -4,19 +4,27 @@ from django.db.models import QuerySet
 
 from .models import AgentProfile, FrontendUser
 
+AGENT_ROOT_USER_SESSION_KEY = "agent_root_user_id"
+
 
 def get_agent_profile_for_request(request):
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return None
+    if getattr(request.user, "is_superuser", False):
+        return None
     if hasattr(request, "_agent_profile_cache"):
         return request._agent_profile_cache
-    try:
-        profile = AgentProfile.objects.select_related("root_user", "backend_user").get(
-            backend_user=request.user,
-            is_active=True,
-        )
-    except AgentProfile.DoesNotExist:
-        profile = None
+
+    profile = None
+    base_qs = AgentProfile.objects.select_related("root_user", "backend_user").filter(
+        is_active=True,
+        root_user__status=True,
+    )
+    root_user_id = request.session.get(AGENT_ROOT_USER_SESSION_KEY)
+    if root_user_id:
+        profile = base_qs.filter(root_user_id=root_user_id, backend_user=request.user).first()
+    if profile is None:
+        profile = base_qs.filter(backend_user=request.user).first()
     request._agent_profile_cache = profile
     return profile
 

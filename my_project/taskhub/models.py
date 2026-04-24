@@ -1,7 +1,7 @@
 import secrets
 from decimal import Decimal
 
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -384,6 +384,36 @@ class CheckInConfig(models.Model):
 
     def __str__(self):
         return "签到参数（全局）"
+
+    @classmethod
+    def get(cls):
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj
+
+
+class ReferralRewardConfig(models.Model):
+    """邀请返佣单例配置。"""
+
+    direct_invite_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=Decimal("0.10"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="直推返佣比例",
+        db_comment="下级完成任务后，按其实际到账 USDT 任务奖励乘以该比例给上级发放推荐奖励；0.10 = 10%",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_referral_reward_config"
+        verbose_name = "邀请返佣配置"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        pct = (self.direct_invite_rate * Decimal("100")).quantize(Decimal("0.01"))
+        return f"邀请返佣配置（{pct}%）"
 
     @classmethod
     def get(cls):
