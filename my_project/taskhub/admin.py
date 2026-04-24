@@ -196,22 +196,19 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "发布人保存时自动设为平台账号（<code>TASK_PLATFORM_PUBLISHER_ID</code>）。"
                     "<strong>首页必做列表</strong>（<code>GET /api/v1/tasks/mandatory/</code>）仅展示：勾选「首页必做」且<strong>状态为可报名</strong>的任务。"
                     "<br><strong>任务分类</strong>请在上方选择，便于后续按类筛选与展示。"
-                    "<strong>需求人数、截止时间、必做排序</strong>等在「名额、截止与联系信息」分组填写；"
+                    "<strong>需求人数、截止时间、必做排序</strong>等在「名额与截止」分组填写；"
                     "普通任务录用人数达到需求人数且非「不按名额关单」玩法时，系统可能将任务标为<strong>已完成</strong>。"
                     "预算与卡片展示奖励见「预算与展示奖励」分组。"
                 ),
             },
         ),
         (
-            "名额、截止与联系信息",
+            "名额与截止",
             {
                 "fields": (
                     "applicants_limit",
                     "deadline",
                     "task_list_order",
-                    "region",
-                    "contact_name",
-                    "contact_phone",
                 ),
                 "description": (
                     "<strong>需求人数（applicants_limit）</strong>：可录用名额；默认曾为 1，仅 1 人录用后普通任务即可能关单，"
