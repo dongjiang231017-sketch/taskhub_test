@@ -307,7 +307,7 @@ SIMPLEUI_CONFIG = {
             "name": "工作台",
             "icon": "fas fa-compass",
             "models": [
-                {"name": "运营总览", "icon": "fas fa-gauge-high", "url": "/admin/"},
+                {"name": "运营总览", "icon": "fas fa-gauge-high", "url": "/dashboard/"},
                 {
                     "name": "接口目录",
                     "icon": "fas fa-book",

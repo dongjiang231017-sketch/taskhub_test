@@ -3,109 +3,520 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>控制台</title>
+    <title>运营总览</title>
     <style>
-        body {font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f6f9;}
-        .container {width: 100%; max-width: 1240px; margin: 20px auto; padding: 0 16px;}
-        .card-row {display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;}
-        .card {flex: 1 1 calc(25% - 16px); min-width: 220px; background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 12px rgba(0,0,0,.08);}
-        .card h3 {margin: 0 0 12px; font-size: 14px; color: #666;}
-        .card .value {font-size: 32px; font-weight: 700; color: #2f4050;}
-        .chart-card {background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 15px rgba(0,0,0,.08); margin-bottom: 24px;}
-        .chart-title {font-size: 16px; margin-bottom: 12px; color: #333;}
-        .chart-box {width: 100%; height: 360px;}
-        .summary-row {display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;}
-        .summary-block {flex: 1 1 calc(33.333% - 16px); min-width: 220px; background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 15px rgba(0,0,0,.08);}
-        .summary-block h4 {margin: 0 0 10px; font-size: 14px; color: #666;}
-        .summary-block .num {font-size: 28px; font-weight: 700; color: #1f78d4;}
+        :root {
+            --bg: #eef2f6;
+            --panel: #ffffff;
+            --panel-soft: #f7f9fc;
+            --line: #d9e1ea;
+            --text: #18212f;
+            --muted: #6a7484;
+            --blue: #1666c1;
+            --green: #168457;
+            --amber: #a66b00;
+            --red: #bd302b;
+            --shadow: 0 12px 30px rgba(24, 33, 47, .08);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        }
+        a { color: inherit; text-decoration: none; }
+        .page {
+            width: min(1480px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 22px 0 36px;
+        }
+        .hero {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 18px;
+            padding: 18px 20px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: linear-gradient(135deg, #ffffff 0%, #f4f8fb 48%, #edf4f1 100%);
+            box-shadow: var(--shadow);
+        }
+        .hero h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+        .hero p { margin: 0; color: var(--muted); font-size: 13px; }
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .link-btn {
+            display: inline-flex;
+            align-items: center;
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            color: #263244;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .kpi {
+            min-height: 128px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            padding: 16px;
+        }
+        .kpi .label { color: var(--muted); font-size: 13px; font-weight: 700; }
+        .kpi .value { margin-top: 12px; font-size: 30px; line-height: 1.1; font-weight: 800; }
+        .kpi .sub { margin-top: 12px; color: var(--muted); font-size: 12px; }
+        .kpi.blue .value { color: var(--blue); }
+        .kpi.green .value { color: var(--green); }
+        .kpi.amber .value { color: var(--amber); }
+        .kpi.red .value { color: var(--red); }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .metric {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            padding: 14px;
+        }
+        .metric h2 {
+            margin: 0 0 12px;
+            font-size: 14px;
+        }
+        .metric dl {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin: 0;
+        }
+        .metric dt { color: var(--muted); font-size: 12px; }
+        .metric dd {
+            margin: 4px 0 0;
+            font-size: 18px;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .chart-card,
+        .table-card,
+        .alert-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            padding: 14px;
+        }
+        .wide { grid-column: 1 / -1; }
+        .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .section-head h2 { margin: 0; font-size: 15px; }
+        .section-head span { color: var(--muted); font-size: 12px; }
+        .chart { width: 100%; height: 330px; }
+        .chart.short { height: 270px; }
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 1.35fr .9fr;
+            gap: 12px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 11px 8px;
+            border-bottom: 1px solid #edf1f6;
+            text-align: left;
+            font-size: 13px;
+            vertical-align: middle;
+        }
+        th { color: var(--muted); font-size: 12px; font-weight: 800; }
+        td strong { font-weight: 800; }
+        .task-title { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .alerts {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .alert-card {
+            display: block;
+            min-height: 108px;
+            padding: 14px;
+        }
+        .alert-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+        .alert-value { margin-top: 10px; font-size: 28px; font-weight: 850; }
+        .alert-hint { margin-top: 8px; color: var(--muted); font-size: 12px; }
+        .alert-card.ok .alert-value { color: var(--green); }
+        .alert-card.warn .alert-value { color: var(--amber); }
+        .alert-card.danger .alert-value { color: var(--red); }
+        .empty {
+            padding: 26px 0;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+        @media (max-width: 1100px) {
+            .kpi-grid,
+            .metric-grid,
+            .chart-grid,
+            .alerts,
+            .bottom-grid { grid-template-columns: 1fr; }
+            .hero { align-items: flex-start; flex-direction: column; }
+            .hero-actions { justify-content: flex-start; }
+        }
+        @media (max-width: 640px) {
+            .page { width: calc(100% - 18px); padding-top: 10px; }
+            .kpi .value { font-size: 24px; }
+            .metric dl { grid-template-columns: 1fr; }
+            .chart { height: 280px; }
+            .table-scroll { overflow-x: auto; }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <div class="card-row">
-            <div class="card">
-                <h3>今日注册人数</h3>
-                <div class="value">{{ registrations|last }}</div>
+    <main class="page">
+        <section class="hero">
+            <div>
+                <h1>运营总览</h1>
+                <p>从用户增长、任务完成、奖励发放、提现结算、签到活跃与平台绑定几个方向观察平台健康度。更新时间：{{ generated_at }}</p>
             </div>
-            <div class="card">
-                <h3>总会员人数</h3>
-                <div class="value">{{ total_members }}</div>
+            <div class="hero-actions">
+                <a class="link-btn" href="/admin/taskhub/task/">任务管理</a>
+                <a class="link-btn" href="/admin/taskhub/taskapplication/">任务报名</a>
+                <a class="link-btn" href="/admin/wallets/withdrawalrequest/">提现审核</a>
+                <a class="link-btn" href="/admin/users/frontenduser/">会员列表</a>
             </div>
-            <div class="card">
-                <h3>今日质押金额</h3>
-                <div class="value">{{ today_staking_amount }}</div>
-            </div>
-            <div class="card">
-                <h3>今日释放金额</h3>
-                <div class="value">{{ today_release_amount }}</div>
-            </div>
-        </div>
+        </section>
 
-        <div class="summary-row">
-            <div class="summary-block">
-                <h4>总质押金额</h4>
-                <div class="num">{{ total_staking_amount }}</div>
+        <section class="kpi-grid">
+            {% for card in kpi_cards %}
+            <div class="kpi {{ card.tone }}">
+                <div class="label">{{ card.label }}</div>
+                <div class="value">{{ card.value }}</div>
+                <div class="sub">{{ card.sub }}</div>
             </div>
-            <div class="summary-block">
-                <h4>当前活跃质押数</h4>
-                <div class="num">{{ active_stake_count }}</div>
-            </div>
-            <div class="summary-block">
-                <h4>累计会员</h4>
-                <div class="num">{{ total_members }}</div>
-            </div>
-        </div>
+            {% endfor %}
+        </section>
 
-        <div class="chart-card">
-            <div class="chart-title">最近14天注册趋势</div>
-            <div id="chart-registrations" class="chart-box"></div>
-        </div>
-        <div class="chart-card">
-            <div class="chart-title">最近14天累计会员趋势</div>
-            <div id="chart-cumulative" class="chart-box"></div>
-        </div>
-        <div class="chart-card">
-            <div class="chart-title">最近14天每日质押金额</div>
-            <div id="chart-staking" class="chart-box"></div>
-        </div>
-        <div class="chart-card">
-            <div class="chart-title">最近14天每日释放金额</div>
-            <div id="chart-release" class="chart-box"></div>
-        </div>
-    </div>
+        <section class="alerts">
+            {% for item in alert_items %}
+            <a class="alert-card {{ item.level }}" href="{{ item.url }}">
+                <div class="alert-label">{{ item.label }}</div>
+                <div class="alert-value">{{ item.value }}</div>
+                <div class="alert-hint">{{ item.hint }}</div>
+            </a>
+            {% endfor %}
+        </section>
+
+        <section class="metric-grid">
+            {% for group in metric_groups %}
+            <div class="metric">
+                <h2>{{ group.title }}</h2>
+                <dl>
+                    {% for label, value in group.items %}
+                    <div>
+                        <dt>{{ label }}</dt>
+                        <dd>{{ value }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </div>
+            {% endfor %}
+        </section>
+
+        <section class="chart-grid">
+            <div class="chart-card wide">
+                <div class="section-head">
+                    <h2>30 日核心运营趋势</h2>
+                    <span>注册、报名、完成、签到</span>
+                </div>
+                <div id="chart-operations" class="chart"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>30 日奖励发放趋势</h2>
+                    <span>USDT / TH Coin</span>
+                </div>
+                <div id="chart-rewards" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>资金进出趋势</h2>
+                    <span>提现申请 / 质押新增</span>
+                </div>
+                <div id="chart-funds" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>任务状态分布</h2>
+                    <span>当前任务池</span>
+                </div>
+                <div id="chart-task-status" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>报名处理漏斗</h2>
+                    <span>待处理 / 已完成 / 已拒绝 / 已取消</span>
+                </div>
+                <div id="chart-application-status" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>账号绑定平台分布</h2>
+                    <span>已完成账号绑定</span>
+                </div>
+                <div id="chart-bindings" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>平台任务完成分布</h2>
+                    <span>按 Twitter / Instagram / TikTok 等统计</span>
+                </div>
+                <div id="chart-platform-tasks" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>任务类型结构</h2>
+                    <span>账号绑定、关注、点赞、入群等</span>
+                </div>
+                <div id="chart-task-types" class="chart short"></div>
+            </div>
+            <div class="chart-card">
+                <div class="section-head">
+                    <h2>资金规模对比</h2>
+                    <span>当前负债与 30 日关键资金</span>
+                </div>
+                <div id="chart-assets" class="chart short"></div>
+            </div>
+        </section>
+
+        <section class="bottom-grid">
+            <div class="table-card">
+                <div class="section-head">
+                    <h2>任务完成排行</h2>
+                    <span>按已完成人数排序</span>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>任务</th>
+                                <th>类型</th>
+                                <th>平台</th>
+                                <th>完成</th>
+                                <th>待处理</th>
+                                <th>USDT</th>
+                                <th>TH</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in top_tasks %}
+                            <tr>
+                                <td><a href="/admin/taskhub/task/{{ task.id }}/change/"><strong>#{{ task.id }}</strong></a></td>
+                                <td><div class="task-title">{{ task.title }}</div></td>
+                                <td>{{ task.type }}</td>
+                                <td>{{ task.platform }}</td>
+                                <td><strong>{{ task.accepted }}</strong></td>
+                                <td>{{ task.pending }}</td>
+                                <td>{{ task.usdt }}</td>
+                                <td>{{ task.th }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="8"><div class="empty">暂无已完成任务数据</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <div class="section-head">
+                    <h2>最近提现</h2>
+                    <span>待处理金额优先关注</span>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>用户</th>
+                                <th>金额</th>
+                                <th>状态</th>
+                                <th>时间</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in recent_withdrawals %}
+                            <tr>
+                                <td><a href="/admin/wallets/withdrawalrequest/{{ item.id }}/change/"><strong>#{{ item.id }}</strong></a></td>
+                                <td>{{ item.user }}</td>
+                                <td>{{ item.amount }}</td>
+                                <td>{{ item.status }}</td>
+                                <td>{{ item.created_at }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5"><div class="empty">暂无提现记录</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
 
     <script>
-        var labels = {{ day_labels|safe }};
-        var registrations = {{ registrations|safe }};
-        var cumulative = {{ cumulative_members|safe }};
-        var stakingAmounts = {{ staking_amounts|safe }};
-        var releaseAmounts = {{ release_amounts|safe }};
+        const data = {{ charts_json|safe }};
+        const palette = ['#1666c1', '#168457', '#d18b00', '#bd302b', '#596579', '#28a7a1', '#7c5cc4', '#d95f76'];
 
-        function initChart(id, title, seriesName, data) {
-            var chart = echarts.init(document.getElementById(id));
-            var option = {
-                tooltip: {trigger: 'axis'},
-                xAxis: {type: 'category', data: labels, boundaryGap: false},
-                yAxis: {type: 'value'},
-                grid: {left: '6%', right: '4%', bottom: '10%', containLabel: true},
-                series: [{
-                    name: seriesName,
-                    type: 'line',
-                    smooth: true,
-                    areaStyle: {color: 'rgba(31, 120, 212, 0.15)'},
-                    lineStyle: {width: 3, color: '#1f78d4'},
-                    itemStyle: {color: '#1f78d4'},
-                    data: data
-                }]
-            };
-            chart.setOption(option);
+        function chart(id) {
+            return echarts.init(document.getElementById(id));
         }
 
-        initChart('chart-registrations', '注册趋势', '注册人数', registrations);
-        initChart('chart-cumulative', '累计会员趋势', '会员总数', cumulative);
-        initChart('chart-staking', '质押金额趋势', '质押金额', stakingAmounts);
-        initChart('chart-release', '释放金额趋势', '释放金额', releaseAmounts);
+        function resizeAll(charts) {
+            window.addEventListener('resize', function () {
+                charts.forEach(function (item) { item.resize(); });
+            });
+        }
+
+        function emptySafePie(items) {
+            return items && items.length ? items : [{ name: '暂无数据', value: 0 }];
+        }
+
+        const charts = [];
+
+        const operations = chart('chart-operations');
+        operations.setOption({
+            color: palette,
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0, data: ['注册', '报名', '完成', '签到', '累计会员'] },
+            grid: { left: 38, right: 36, top: 50, bottom: 36, containLabel: true },
+            xAxis: { type: 'category', boundaryGap: false, data: data.labels },
+            yAxis: [
+                { type: 'value', name: '每日' },
+                { type: 'value', name: '累计会员' }
+            ],
+            series: [
+                { name: '注册', type: 'bar', data: data.registrations, barMaxWidth: 18 },
+                { name: '报名', type: 'line', smooth: true, data: data.applications },
+                { name: '完成', type: 'line', smooth: true, data: data.completed },
+                { name: '签到', type: 'line', smooth: true, data: data.checkins },
+                { name: '累计会员', type: 'line', yAxisIndex: 1, smooth: true, data: data.cumulativeMembers, lineStyle: { width: 3 } }
+            ]
+        });
+        charts.push(operations);
+
+        const rewards = chart('chart-rewards');
+        rewards.setOption({
+            color: ['#1666c1', '#a66b00'],
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0, data: ['USDT', 'TH Coin'] },
+            grid: { left: 34, right: 24, top: 48, bottom: 30, containLabel: true },
+            xAxis: { type: 'category', data: data.labels },
+            yAxis: { type: 'value' },
+            series: [
+                { name: 'USDT', type: 'line', smooth: true, areaStyle: { opacity: .13 }, data: data.usdtRewards },
+                { name: 'TH Coin', type: 'line', smooth: true, areaStyle: { opacity: .1 }, data: data.thRewards }
+            ]
+        });
+        charts.push(rewards);
+
+        const funds = chart('chart-funds');
+        funds.setOption({
+            color: ['#bd302b', '#168457'],
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0, data: ['提现申请', '质押新增'] },
+            grid: { left: 34, right: 24, top: 48, bottom: 30, containLabel: true },
+            xAxis: { type: 'category', data: data.labels },
+            yAxis: { type: 'value' },
+            series: [
+                { name: '提现申请', type: 'bar', data: data.withdrawals, barMaxWidth: 18 },
+                { name: '质押新增', type: 'line', smooth: true, data: data.stakes }
+            ]
+        });
+        charts.push(funds);
+
+        const taskStatus = chart('chart-task-status');
+        taskStatus.setOption({
+            color: palette,
+            tooltip: { trigger: 'item' },
+            series: [{ type: 'pie', radius: ['48%', '72%'], data: emptySafePie(data.taskStatuses), label: { formatter: '{b}: {c}' } }]
+        });
+        charts.push(taskStatus);
+
+        const appStatus = chart('chart-application-status');
+        appStatus.setOption({
+            color: palette,
+            tooltip: { trigger: 'item' },
+            series: [{ type: 'funnel', left: '8%', top: 20, bottom: 20, width: '84%', sort: 'descending', data: emptySafePie(data.applicationStatuses) }]
+        });
+        charts.push(appStatus);
+
+        const bindings = chart('chart-bindings');
+        bindings.setOption({
+            color: palette,
+            tooltip: { trigger: 'item' },
+            series: [{ type: 'pie', radius: '68%', data: emptySafePie(data.bindingPlatforms), label: { formatter: '{b}: {c}' } }]
+        });
+        charts.push(bindings);
+
+        const platformTasks = chart('chart-platform-tasks');
+        platformTasks.setOption({
+            color: ['#1666c1'],
+            tooltip: { trigger: 'axis' },
+            grid: { left: 34, right: 24, top: 18, bottom: 32, containLabel: true },
+            xAxis: { type: 'category', data: data.platformTasks.map(function (x) { return x.name; }) },
+            yAxis: { type: 'value' },
+            series: [{ type: 'bar', barMaxWidth: 34, data: data.platformTasks.map(function (x) { return x.value; }) }]
+        });
+        charts.push(platformTasks);
+
+        const taskTypes = chart('chart-task-types');
+        taskTypes.setOption({
+            color: palette,
+            tooltip: { trigger: 'item' },
+            series: [{ type: 'pie', radius: ['42%', '70%'], data: emptySafePie(data.taskTypes), label: { formatter: '{b}: {c}' } }]
+        });
+        charts.push(taskTypes);
+
+        const assets = chart('chart-assets');
+        assets.setOption({
+            color: ['#1666c1', '#168457', '#a66b00', '#bd302b'],
+            tooltip: { trigger: 'axis' },
+            grid: { left: 34, right: 24, top: 18, bottom: 32, containLabel: true },
+            xAxis: { type: 'category', data: data.assetBars.map(function (x) { return x.name; }) },
+            yAxis: { type: 'value' },
+            series: [{ type: 'bar', barMaxWidth: 34, data: data.assetBars.map(function (x) { return x.value; }) }]
+        });
+        charts.push(assets);
+
+        resizeAll(charts);
     </script>
 </body>
 </html>
