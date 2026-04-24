@@ -36,6 +36,7 @@ from .integration_config import get_telegram_bot_token, get_twitter_bearer_token
 from .instagram_client import normalize_instagram_username
 from .instagram_apify_client import apify_instagram_configured, profile_contains_proof_via_apify
 from .telegram_group_client import user_is_member_of_chat
+from .locale_prefs import normalize_preferred_language
 from .tiktok_apify_client import (
     apify_tiktok_configured,
     apify_tiktok_error_is_service_side,
@@ -831,8 +832,32 @@ def logout_api(request):
 
 @csrf_exempt
 @require_api_login
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "PATCH"])
 def my_profile_api(request):
+    if request.method == "PATCH":
+        try:
+            body = parse_json_body(request)
+        except ValueError as exc:
+            return api_error(str(exc), code=4001, status=400)
+
+        raw_language = (
+            body.get("preferred_language")
+            or body.get("preferredLanguage")
+            or body.get("language")
+            or body.get("locale")
+        )
+        preferred_language = normalize_preferred_language(raw_language)
+        if raw_language is not None and preferred_language is None:
+            return api_error("preferred_language 不受支持", code=4013, status=400)
+
+        user = request.api_user
+        updated_fields = []
+        if preferred_language and user.preferred_language != preferred_language:
+            user.preferred_language = preferred_language
+            updated_fields.append("preferred_language")
+        if updated_fields:
+            user.save(update_fields=updated_fields)
+
     return api_response({"user": serialize_user(request.api_user)})
 
 

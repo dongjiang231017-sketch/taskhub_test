@@ -5,6 +5,24 @@ from decimal import Decimal
 from django.db import migrations, models
 
 
+def create_withdrawal_request_model(apps, schema_editor):
+    table_name = "frontend_withdrawal_request"
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+    if table_name in existing_tables:
+        return
+    WithdrawalRequest = apps.get_model("wallets", "WithdrawalRequest")
+    schema_editor.create_model(WithdrawalRequest)
+
+
+def drop_withdrawal_request_model(apps, schema_editor):
+    table_name = "frontend_withdrawal_request"
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+    if table_name not in existing_tables:
+        return
+    WithdrawalRequest = apps.get_model("wallets", "WithdrawalRequest")
+    schema_editor.delete_model(WithdrawalRequest)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,26 +31,33 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='WithdrawalRequest',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('amount', models.DecimalField(db_comment='从钱包扣除的 USDT 总额（含手续费时即用户输入的总扣款）', decimal_places=2, max_digits=20, verbose_name='提现金额(扣款)')),
-                ('fee', models.DecimalField(db_comment='从 amount 中拆分的手续费；预计到账 = amount - fee', decimal_places=2, default=Decimal('0.00'), max_digits=20, verbose_name='手续费')),
-                ('chain', models.CharField(db_comment='如 BEP20', default='BEP20', max_length=32, verbose_name='链')),
-                ('to_address', models.CharField(db_comment='用户填写的链上地址', max_length=128, verbose_name='收款地址')),
-                ('status', models.CharField(choices=[('processing', '处理中'), ('completed', '已完成'), ('rejected', '已拒绝')], db_comment='处理中/已完成/已拒绝', default='processing', max_length=20, verbose_name='状态')),
-                ('reject_reason', models.CharField(blank=True, db_comment='拒绝时填写', default='', max_length=255, verbose_name='拒绝原因')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('debit_transaction', models.ForeignKey(blank=True, db_comment='对应钱包 USDT 扣款流水', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='withdrawal_requests', to='wallets.transaction', verbose_name='扣款账变')),
-                ('user', models.ForeignKey(db_comment='申请人', on_delete=django.db.models.deletion.CASCADE, related_name='withdrawal_requests', to='users.frontenduser', verbose_name='用户')),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.CreateModel(
+                    name='WithdrawalRequest',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('amount', models.DecimalField(db_comment='从钱包扣除的 USDT 总额（含手续费时即用户输入的总扣款）', decimal_places=2, max_digits=20, verbose_name='提现金额(扣款)')),
+                        ('fee', models.DecimalField(db_comment='从 amount 中拆分的手续费；预计到账 = amount - fee', decimal_places=2, default=Decimal('0.00'), max_digits=20, verbose_name='手续费')),
+                        ('chain', models.CharField(db_comment='如 BEP20', default='BEP20', max_length=32, verbose_name='链')),
+                        ('to_address', models.CharField(db_comment='用户填写的链上地址', max_length=128, verbose_name='收款地址')),
+                        ('status', models.CharField(choices=[('processing', '处理中'), ('completed', '已完成'), ('rejected', '已拒绝')], db_comment='处理中/已完成/已拒绝', default='processing', max_length=20, verbose_name='状态')),
+                        ('reject_reason', models.CharField(blank=True, db_comment='拒绝时填写', default='', max_length=255, verbose_name='拒绝原因')),
+                        ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
+                        ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
+                        ('debit_transaction', models.ForeignKey(blank=True, db_comment='对应钱包 USDT 扣款流水', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='withdrawal_requests', to='wallets.transaction', verbose_name='扣款账变')),
+                        ('user', models.ForeignKey(db_comment='申请人', on_delete=django.db.models.deletion.CASCADE, related_name='withdrawal_requests', to='users.frontenduser', verbose_name='用户')),
+                    ],
+                    options={
+                        'verbose_name': '提现申请',
+                        'verbose_name_plural': '提现申请',
+                        'db_table': 'frontend_withdrawal_request',
+                        'ordering': ('-created_at',),
+                    },
+                ),
             ],
-            options={
-                'verbose_name': '提现申请',
-                'verbose_name_plural': '提现申请',
-                'db_table': 'frontend_withdrawal_request',
-                'ordering': ('-created_at',),
-            },
+            database_operations=[
+                migrations.RunPython(create_withdrawal_request_model, drop_withdrawal_request_model),
+            ],
         ),
     ]

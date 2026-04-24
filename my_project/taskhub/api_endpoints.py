@@ -150,7 +150,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task",
         True,
     ),
-    PublicEndpoint(("GET",), "me/profile/", "当前登录用户信息", True),
+    PublicEndpoint(("GET", "PATCH"), "me/profile/", "当前登录用户信息 / 更新语言偏好", True),
     PublicEndpoint(("GET",), "categories/", "任务分类列表", False),
     PublicEndpoint(
         ("GET",),

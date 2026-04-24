@@ -13,7 +13,7 @@ from wallets.models import Transaction, Wallet
 from django.db import DatabaseError
 from django.test import SimpleTestCase
 
-from taskhub.models import ReferralRewardConfig, Task, TaskApplication
+from taskhub.models import ApiToken, ReferralRewardConfig, Task, TaskApplication
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
@@ -169,6 +169,28 @@ class ReferralRewardTests(TestCase):
                 amount="3.00",
             ).exists()
         )
+
+
+class ProfileLanguagePreferenceTests(TestCase):
+    def test_patch_profile_updates_preferred_language(self):
+        user = FrontendUser.objects.create(
+            username="lang_user",
+            phone="13800000021",
+            password="pass123456",
+        )
+        token = ApiToken.issue_for_user(user)
+
+        response = self.client.patch(
+            reverse("taskhub-profile"),
+            data={"preferred_language": "pt"},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.preferred_language, "pt-BR")
+        self.assertEqual(response.json()["data"]["user"]["preferred_language"], "pt-BR")
 
 
 class AgentAdminLoginTests(TestCase):

@@ -79,6 +79,7 @@ Authorization: Bearer <token>
 ### 2.4 当前用户信息
 
 - `GET /api/v1/me/profile/`
+- `PATCH /api/v1/me/profile/`
 - 需要 Bearer Token
 
 返回的 `user` 与登录接口一致，额外字段：
@@ -1251,6 +1252,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/daily-tasks/` | 每日任务：后台配置 + 当日进度 + 每档 locked/claimable/claimed（自然日零点重置） | 是 |
 | POST | `/api/v1/daily-tasks/claim/` | 领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task | 是 |
 | GET | `/api/v1/me/profile/` | 当前登录用户信息 | 是 |
+| PATCH | `/api/v1/me/profile/` | 更新当前用户语言偏好 | 是 |
 | GET | `/api/v1/categories/` | 任务分类列表 | 否 |
 | GET | `/api/v1/guides/categories/` | 新手指南：分类 Tab（GuideCategory + 兼容旧 category_key；含虚拟「全部」） | 否 |
 | GET | `/api/v1/guides/featured/` | 新手指南：置顶大卡/首条推荐（Announcement post_type=newbie_guide） | 否 |
