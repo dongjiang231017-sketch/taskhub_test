@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.db.models import Count, Prefetch, Q
+from django.utils import timezone
 from django.utils.html import format_html
 
 from taskhub.models import Task, TaskApplication
@@ -53,6 +54,14 @@ class FrontendUserAdmin(admin.ModelAdmin):
     
     # 右侧过滤器
     list_filter = ('status', 'membership_level', 'created_at')
+    actions = (
+        "unbind_twitter_accounts",
+        "unbind_youtube_accounts",
+        "unbind_instagram_accounts",
+        "unbind_tiktok_accounts",
+        "unbind_telegram_accounts",
+        "unbind_all_platform_accounts",
+    )
     
     # 搜索框支持的字段
     search_fields = ('phone', 'username', 'invite_code', 'telegram_username')
@@ -107,6 +116,66 @@ class FrontendUserAdmin(admin.ModelAdmin):
                 queryset=TaskApplication.objects.select_related("task").order_by("-created_at"),
             )
         )
+
+    def _cancel_binding_applications(self, queryset, platform: str) -> int:
+        user_ids = list(queryset.values_list("id", flat=True))
+        if not user_ids:
+            return 0
+        return TaskApplication.objects.filter(
+            applicant_id__in=user_ids,
+            task__interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+            task__binding_platform=platform,
+        ).exclude(status=TaskApplication.STATUS_CANCELLED).update(
+            status=TaskApplication.STATUS_CANCELLED,
+            bound_username=None,
+            self_verified_at=None,
+            decided_at=timezone.now(),
+        )
+
+    def _unbind_platform_accounts(self, request, queryset, platform: str, label: str):
+        count = self._cancel_binding_applications(queryset, platform)
+        self.message_user(request, f"已解绑 {count} 条 {label} 账号绑定记录。")
+
+    @admin.action(description="解绑所选会员的 Twitter / X 账号")
+    def unbind_twitter_accounts(self, request, queryset):
+        self._unbind_platform_accounts(request, queryset, Task.BINDING_TWITTER, "Twitter / X")
+
+    @admin.action(description="解绑所选会员的 YouTube 账号")
+    def unbind_youtube_accounts(self, request, queryset):
+        self._unbind_platform_accounts(request, queryset, Task.BINDING_YOUTUBE, "YouTube")
+
+    @admin.action(description="解绑所选会员的 Instagram 账号")
+    def unbind_instagram_accounts(self, request, queryset):
+        self._unbind_platform_accounts(request, queryset, Task.BINDING_INSTAGRAM, "Instagram")
+
+    @admin.action(description="解绑所选会员的 TikTok 账号")
+    def unbind_tiktok_accounts(self, request, queryset):
+        self._unbind_platform_accounts(request, queryset, Task.BINDING_TIKTOK, "TikTok")
+
+    @admin.action(description="解绑所选会员的 Telegram 登录身份")
+    def unbind_telegram_accounts(self, request, queryset):
+        count = queryset.exclude(telegram_id__isnull=True).update(
+            telegram_id=None,
+            telegram_username=None,
+        )
+        self.message_user(request, f"已解绑 {count} 个会员的 Telegram 登录身份。")
+
+    @admin.action(description="解绑所选会员的全部平台账号")
+    def unbind_all_platform_accounts(self, request, queryset):
+        total = 0
+        for platform in (
+            Task.BINDING_TWITTER,
+            Task.BINDING_YOUTUBE,
+            Task.BINDING_INSTAGRAM,
+            Task.BINDING_TIKTOK,
+            Task.BINDING_FACEBOOK,
+        ):
+            total += self._cancel_binding_applications(queryset, platform)
+        telegram_count = queryset.exclude(telegram_id__isnull=True).update(
+            telegram_id=None,
+            telegram_username=None,
+        )
+        self.message_user(request, f"已解绑 {total} 条任务平台绑定记录，并解绑 {telegram_count} 个 Telegram 身份。")
 
     @admin.display(description="任务绑定账号")
     def task_binding_accounts(self, obj):

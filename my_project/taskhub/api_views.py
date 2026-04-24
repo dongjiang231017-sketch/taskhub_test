@@ -28,8 +28,10 @@ from .task_rewards import grant_task_completion_reward
 from .binding_usernames import account_binding_requires_bound_username, normalize_bound_username_for_task
 from .twitter_client import (
     extract_tweet_id_from_url,
+    extract_username_from_profile_url,
     normalize_twitter_username,
     user_follows_username,
+    user_liked_tweet,
     user_retweeted_tweet,
 )
 from .integration_config import get_telegram_bot_token, get_twitter_bearer_token
@@ -285,6 +287,94 @@ def interaction_verify_action(task: Task) -> str | None:
     return None
 
 
+SOCIAL_ACTION_BOUND_PLATFORMS = {
+    Task.BINDING_TWITTER,
+    Task.BINDING_INSTAGRAM,
+    Task.BINDING_TIKTOK,
+}
+
+
+def _accepted_platform_binding_application(user: FrontendUser, platform: str) -> TaskApplication | None:
+    if not user or not platform:
+        return None
+    return (
+        TaskApplication.objects.filter(
+            applicant=user,
+            status=TaskApplication.STATUS_ACCEPTED,
+            task__interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+            task__binding_platform=platform,
+        )
+        .select_related("task")
+        .order_by("-decided_at", "-created_at")
+        .first()
+    )
+
+
+def _social_action_binding_error(task: Task, user: FrontendUser) -> tuple[int, str] | None:
+    if task.interaction_type not in {
+        Task.INTERACTION_FOLLOW,
+        Task.INTERACTION_LIKE,
+        Task.INTERACTION_COMMENT,
+    }:
+        return None
+    if not task.binding_platform:
+        return 4310, "该社交任务未配置目标平台，请联系管理员处理。"
+    if task.binding_platform not in SOCIAL_ACTION_BOUND_PLATFORMS:
+        return None
+    if _accepted_platform_binding_application(user, task.binding_platform):
+        return None
+    platform_label = dict(Task.BINDING_PLATFORM_CHOICES).get(task.binding_platform, task.binding_platform)
+    return 4311, f"请先绑定 {platform_label} 账号后再完成该任务。"
+
+
+def _social_action_binding_api_error(task: Task, user: FrontendUser):
+    binding_error = _social_action_binding_error(task, user)
+    if not binding_error:
+        return None
+    code, msg = binding_error
+    return api_error(msg, code=code, status=400)
+
+
+def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool, int, str, int]:
+    cfg = task.interaction_config or {}
+    bearer = get_twitter_bearer_token()
+    if not bearer:
+        return False, 4312, "Twitter 校验服务暂不可用，请稍后再试。", 503
+
+    if task.interaction_type == Task.INTERACTION_FOLLOW:
+        target = normalize_twitter_username((cfg.get("target_follow_username") or "").strip())
+        if not target:
+            target = extract_username_from_profile_url((cfg.get("target_profile_url") or "").strip())
+        if not target:
+            return False, 4313, "Twitter 关注任务缺少目标账号配置，请联系管理员处理。", 400
+        try:
+            ok = user_follows_username(bearer, bound_username, target)
+        except ValueError:
+            return False, 4314, "暂时无法完成 Twitter 关注校验，请稍后再试。", 502
+        if not ok:
+            return False, 4315, "并未检测到关注，请先完成关注后再试。", 400
+        return True, 0, "", 200
+
+    if task.interaction_type == Task.INTERACTION_LIKE:
+        tweet_url = (
+            (cfg.get("target_like_url") or "")
+            or (cfg.get("target_tweet_url") or "")
+            or (cfg.get("target_post_url") or "")
+        ).strip()
+        tweet_id = extract_tweet_id_from_url(tweet_url)
+        if not tweet_id:
+            return False, 4316, "Twitter 点赞任务缺少目标推文配置，请联系管理员处理。", 400
+        try:
+            ok = user_liked_tweet(bearer, tweet_id, bound_username)
+        except ValueError:
+            return False, 4317, "暂时无法完成 Twitter 点赞校验，请稍后再试。", 502
+        if not ok:
+            return False, 4318, "并未检测到点赞，请先完成点赞后再试。", 400
+        return True, 0, "", 200
+
+    return True, 0, "", 200
+
+
 def serialize_task(task, current_user=None, include_contact=False):
     application_count = getattr(task, "application_count", None)
     if application_count is None:
@@ -370,8 +460,16 @@ def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, 
                 return False, 4101, "您已完成该任务"
         if existing.status == TaskApplication.STATUS_REJECTED:
             return False, 4036, "该任务报名已被拒绝，无法再次提交"
+        binding_error = _social_action_binding_error(task, user)
+        if binding_error:
+            code, msg = binding_error
+            return False, code, msg
         # 本人已有报名：应允许继续（同步信息 / 校验），不因名额已满而误标为不可点
         return True, 0, None
+    binding_error = _social_action_binding_error(task, user)
+    if binding_error:
+        code, msg = binding_error
+        return False, code, msg
     if not is_mandatory_no_slot_cap(task):
         if active_taker_count(task) >= effective_applicants_limit(task):
             return False, 4035, "该任务接取人数已满"
@@ -1476,6 +1574,9 @@ def task_apply_api(request, task_id):
                     return api_error("不能报名自己发布的任务", code=4033, status=400)
                 if task.status != Task.STATUS_OPEN:
                     return api_error("当前任务不可报名", code=4034, status=400)
+                social_binding_resp = _social_action_binding_api_error(task, request.api_user)
+                if social_binding_resp:
+                    return social_binding_resp
                 locked = TaskApplication.objects.select_for_update().get(pk=existing.pk)
                 if locked.status != TaskApplication.STATUS_ACCEPTED:
                     return api_error("报名状态已变更，请刷新页面", code=4090, status=409)
@@ -1509,6 +1610,9 @@ def task_apply_api(request, task_id):
                     return api_error("不能报名自己发布的任务", code=4033, status=400)
                 if task.status != Task.STATUS_OPEN:
                     return api_error("当前任务不可报名", code=4034, status=400)
+                social_binding_resp = _social_action_binding_api_error(task, request.api_user)
+                if social_binding_resp:
+                    return social_binding_resp
                 locked = TaskApplication.objects.select_for_update().get(pk=existing.pk)
                 if locked.status != TaskApplication.STATUS_PENDING:
                     return api_error("报名状态已变更，请刷新页面", code=4090, status=409)
@@ -1530,6 +1634,9 @@ def task_apply_api(request, task_id):
             return api_error("不能报名自己发布的任务", code=4033, status=400)
         if task.status != Task.STATUS_OPEN:
             return api_error("当前任务不可报名", code=4034, status=400)
+        social_binding_resp = _social_action_binding_api_error(task, request.api_user)
+        if social_binding_resp:
+            return social_binding_resp
 
         bound_username = normalize_bound_username_for_task(task, bound_username_raw) or None
 
@@ -2207,6 +2314,18 @@ def application_social_action_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4305, status=400)
+
+    binding_error = _social_action_binding_error(task, request.api_user)
+    if binding_error:
+        code, msg = binding_error
+        return api_error(msg, code=code, status=400)
+
+    bound_app = _accepted_platform_binding_application(request.api_user, task.binding_platform)
+    if task.binding_platform == Task.BINDING_TWITTER:
+        bound_username = normalize_twitter_username(bound_app.bound_username if bound_app else "")
+        ok, code, msg, status = _verify_twitter_social_action(task, bound_username)
+        if not ok:
+            return api_error(msg, code=code, status=status)
 
     last_holder = {"last_granted": {"granted": False, "usdt": "0", "th_coin": "0"}}
     try:

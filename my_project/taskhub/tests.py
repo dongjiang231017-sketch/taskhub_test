@@ -234,7 +234,7 @@ class AgentAdminLoginTests(TestCase):
 
 
 class SocialActionTaskTests(TestCase):
-    def test_social_action_verify_completes_pending_follow_task(self):
+    def _create_user_pair(self):
         publisher = FrontendUser.objects.create(
             username="social_publisher",
             phone="13800000031",
@@ -245,7 +245,111 @@ class SocialActionTaskTests(TestCase):
             phone="13800000032",
             password="pass123456",
         )
-        token = ApiToken.issue_for_user(applicant)
+        return publisher, applicant, ApiToken.issue_for_user(applicant)
+
+    def _bind_platform_account(self, *, publisher, applicant, platform, username="taskhub_user"):
+        binding_task = Task.objects.create(
+            publisher=publisher,
+            title=f"绑定 {platform}",
+            description="绑定账号",
+            interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+            binding_platform=platform,
+            reward_usdt=Decimal("0.00"),
+            reward_th_coin=Decimal("0.00"),
+            applicants_limit=1,
+            status=Task.STATUS_OPEN,
+        )
+        return TaskApplication.objects.create(
+            task=binding_task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_ACCEPTED,
+            bound_username=username,
+            quoted_price="0.00",
+        )
+
+    def test_social_action_verify_rejects_user_without_platform_binding(self):
+        publisher, applicant, token = self._create_user_pair()
+        task = Task.objects.create(
+            publisher=publisher,
+            title="关注 Twitter",
+            description="打开链接后关注官方账号",
+            interaction_type=Task.INTERACTION_FOLLOW,
+            binding_platform=Task.BINDING_TWITTER,
+            interaction_config={"target_follow_username": "taskhub_official"},
+            reward_usdt=Decimal("0.50"),
+            reward_th_coin=Decimal("1.00"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 4311)
+        application.refresh_from_db()
+        self.assertEqual(application.status, TaskApplication.STATUS_PENDING)
+
+    @patch("taskhub.api_views.user_follows_username")
+    @patch("taskhub.api_views.get_twitter_bearer_token")
+    def test_twitter_follow_task_rejects_when_follow_not_detected(self, mock_bearer, mock_follows):
+        publisher, applicant, token = self._create_user_pair()
+        self._bind_platform_account(
+            publisher=publisher,
+            applicant=applicant,
+            platform=Task.BINDING_TWITTER,
+            username="social_user_x",
+        )
+        mock_bearer.return_value = "twitter-bearer"
+        mock_follows.return_value = False
+        task = Task.objects.create(
+            publisher=publisher,
+            title="关注 Twitter",
+            description="打开链接后关注官方账号",
+            interaction_type=Task.INTERACTION_FOLLOW,
+            binding_platform=Task.BINDING_TWITTER,
+            interaction_config={"target_follow_username": "taskhub_official"},
+            reward_usdt=Decimal("0.50"),
+            reward_th_coin=Decimal("1.00"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 4315)
+        mock_follows.assert_called_once_with("twitter-bearer", "social_user_x", "taskhub_official")
+
+    def test_social_action_verify_completes_pending_follow_task(self):
+        publisher, applicant, token = self._create_user_pair()
+        self._bind_platform_account(
+            publisher=publisher,
+            applicant=applicant,
+            platform=Task.BINDING_INSTAGRAM,
+            username="social_user_ig",
+        )
         task = Task.objects.create(
             publisher=publisher,
             title="关注 Instagram",

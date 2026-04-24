@@ -5,6 +5,7 @@ from django.contrib import admin, messages
 from django.db.utils import OperationalError, ProgrammingError
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from users.admin_widgets import binding_modal_trigger
@@ -278,6 +279,7 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "decided_at",
     )
     list_filter = ("status", "created_at")
+    actions = ("unbind_selected_binding_accounts",)
     search_fields = (
         "task__title",
         "applicant__username",
@@ -316,6 +318,18 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         rows = [{"platform": plat or "报名", "account": bu}]
         return binding_modal_trigger(rows, label="已绑定 · 查看")
 
+    @admin.action(description="解绑所选账号绑定记录")
+    def unbind_selected_binding_accounts(self, request, queryset):
+        count = queryset.filter(
+            task__interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+        ).exclude(status=TaskApplication.STATUS_CANCELLED).update(
+            status=TaskApplication.STATUS_CANCELLED,
+            bound_username=None,
+            self_verified_at=None,
+            decided_at=timezone.now(),
+        )
+        self.message_user(request, f"已解绑 {count} 条账号绑定记录。")
+
 
 @admin.register(TaskCompletionRecord)
 class TaskCompletionRecordAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
@@ -341,6 +355,7 @@ class TaskCompletionRecordAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("decided_at", "created_at", "reward_paid_at")
+    actions = ("unbind_selected_binding_accounts",)
     search_fields = (
         "task__title",
         "applicant__username",
@@ -395,6 +410,18 @@ class TaskCompletionRecordAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             plat = task.get_binding_platform_display()
         rows = [{"platform": plat or "报名", "account": bu}]
         return binding_modal_trigger(rows, label="已绑定 · 查看")
+
+    @admin.action(description="解绑所选账号绑定记录")
+    def unbind_selected_binding_accounts(self, request, queryset):
+        count = queryset.filter(
+            task__interaction_type=Task.INTERACTION_ACCOUNT_BINDING,
+        ).update(
+            status=TaskApplication.STATUS_CANCELLED,
+            bound_username=None,
+            self_verified_at=None,
+            decided_at=timezone.now(),
+        )
+        self.message_user(request, f"已解绑 {count} 条账号绑定记录。")
 
 
 @admin.register(CheckInConfig)

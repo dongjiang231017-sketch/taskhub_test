@@ -26,6 +26,22 @@ def extract_tweet_id_from_url(url: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+def extract_username_from_profile_url(url: str | None) -> str:
+    if not url or not isinstance(url, str):
+        return ""
+    parsed = urllib.parse.urlparse(url.strip())
+    host = parsed.netloc.lower()
+    if host not in {"x.com", "twitter.com", "www.x.com", "www.twitter.com"}:
+        return ""
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return ""
+    candidate = parts[0]
+    if candidate.lower() in {"i", "intent", "share", "home", "search", "hashtag"}:
+        return ""
+    return normalize_twitter_username(candidate)
+
+
 def _twitter_get(bearer: str, path: str, params: dict | None = None) -> dict:
     q = urllib.parse.urlencode({k: v for k, v in (params or {}).items() if v is not None})
     url = f"{TWITTER_API}{path}"
@@ -85,6 +101,25 @@ def user_follows_username(bearer: str, source_username: str, target_username: st
         if token:
             params["pagination_token"] = token
         data = _twitter_get(bearer, f"/users/{sid}/following", params)
+        for u in data.get("data") or []:
+            if (u.get("username") or "").lower() == want:
+                return True
+        token = (data.get("meta") or {}).get("next_token")
+        if not token:
+            return False
+
+
+def user_liked_tweet(bearer: str, tweet_id: str, username: str) -> bool:
+    """检查 username（不含 @）是否出现在该推文点赞用户列表中。"""
+    want = normalize_twitter_username(username).lower()
+    if not want or not tweet_id:
+        return False
+    token = None
+    while True:
+        params: dict[str, str | int] = {"max_results": 100, "user.fields": "username"}
+        if token:
+            params["pagination_token"] = token
+        data = _twitter_get(bearer, f"/tweets/{tweet_id}/liking_users", params)
         for u in data.get("data") or []:
             if (u.get("username") or "").lower() == want:
                 return True
