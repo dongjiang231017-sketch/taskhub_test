@@ -23,8 +23,6 @@ def get_agent_profile_for_request(request):
     root_user_id = request.session.get(AGENT_ROOT_USER_SESSION_KEY)
     if root_user_id:
         profile = base_qs.filter(root_user_id=root_user_id, backend_user=request.user).first()
-    if profile is None:
-        profile = base_qs.filter(backend_user=request.user).first()
     request._agent_profile_cache = profile
     return profile
 

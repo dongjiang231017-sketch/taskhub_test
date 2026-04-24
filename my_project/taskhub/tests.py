@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
+from django.contrib.auth import get_user_model
 
 from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
@@ -195,3 +196,16 @@ class AgentAdminLoginTests(TestCase):
         self.assertEqual(session[AGENT_ROOT_USER_SESSION_KEY], root_user.id)
         home = self.client.get(reverse("agent_admin:index"))
         self.assertEqual(home.status_code, 200)
+
+    def test_superuser_cannot_directly_enter_agent_admin(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="main_admin",
+            email="admin@example.com",
+            password="adminpass123",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("agent_admin:index"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("agent_admin:login"), response.headers["Location"])

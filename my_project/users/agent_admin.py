@@ -66,8 +66,6 @@ class AgentAdminSite(AdminSite):
         user = request.user
         if not (user.is_active and user.is_staff):
             return False
-        if user.is_superuser:
-            return True
         return get_agent_profile_for_request(request) is not None
 
     def each_context(self, request):
