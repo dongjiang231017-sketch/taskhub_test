@@ -782,6 +782,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `comment` | 评论 |
 | `watch_video` | 观看视频 |
 | `external_vote` | 外部网页投票 |
+| `screenshot_proof` | 上传截图后后台审核 |
 
 **`binding_platform` 取值**（账号绑定 / 关注 / 点赞类任务会用到；其它类型一般为 `null` 或空字符串）
 
@@ -792,7 +793,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 **校验动作（由后端根据任务配置计算，前端据此调对应接口）**
 
 - **`binding_verify_action`**：账号绑定类需要用户调用的校验，如 `verify-twitter`；无则为 `null`。
-- **`interaction_verify_action`**：非「账号绑定」类、但需要用户主动调接口的校验，如入群 **`verify-telegram-group`**、社交任务 **`verify-social-action`**；无则为 `null`。
+- **`interaction_verify_action`**：非「账号绑定」类、但需要用户主动调接口的校验，如入群 **`verify-telegram-group`**、社交任务 **`verify-social-action`**、截图审核 **`upload-proof`**；无则为 `null`。
 
 详见上文 **§4.0** 与各 **`POST …/verify-*/`** 小节。
 
@@ -824,9 +825,9 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 }
 ```
 
-**必做任务（可选）**：`interaction_type` 取值 `none`（默认）、`account_binding`、`join_community`、`follow`、`like`、`comment`、`watch_video`、`external_vote`。账号绑定 / 关注 / 点赞类任务须带 `binding_platform`：`twitter` / `youtube` / `instagram` / `tiktok` / `facebook` / `telegram`。**加入 Telegram 群**须配 `invite_link` / `telegram_invite_link`；若需服务端校验在群内，再加 `telegram_chat_id`。`verification_mode` 可省略，后端会按类型给默认；也可显式传 `user_self_confirm`、`profile_link_proof`、`screenshot_review`。`interaction_config` 示例：推特 `{"target_tweet_url":"https://…/status/123","require_retweet":true,"require_follow":false,"target_follow_username":""}`（`require_retweet` 省略且配置了 `target_tweet_url` 时默认 `true`）；Instagram 关注 `{"target_profile_url":"https://www.instagram.com/taskhub_official/"}`；Instagram 点赞 `{"target_post_url":"https://www.instagram.com/p/ABCDEF12345/"}`；TikTok 关注 `{"target_profile_url":"https://www.tiktok.com/@taskhub_official"}`；TikTok 点赞 `{"target_video_url":"https://www.tiktok.com/@taskhub_official/video/1234567890123456789"}`；YouTube `{"youtube_proof_link":"https://…"}`；入群校验 `{"invite_link":"https://t.me/+xxxx","telegram_chat_id":"-1001234567890"}`。
+**必做任务（可选）**：`interaction_type` 取值 `none`（默认）、`account_binding`、`join_community`、`follow`、`like`、`comment`、`watch_video`、`external_vote`、`screenshot_proof`。账号绑定 / 关注 / 点赞类任务须带 `binding_platform`：`twitter` / `youtube` / `instagram` / `tiktok` / `facebook` / `telegram`。**加入 Telegram 群**须配 `invite_link` / `telegram_invite_link`；若需服务端校验在群内，再加 `telegram_chat_id`。`screenshot_proof` 会默认使用 `verification_mode="screenshot_review"`，用户前台上传截图后由后台审核。`verification_mode` 可省略，后端会按类型给默认；也可显式传 `user_self_confirm`、`profile_link_proof`、`screenshot_review`。`interaction_config` 示例：推特 `{"target_tweet_url":"https://…/status/123","require_retweet":true,"require_follow":false,"target_follow_username":""}`（`require_retweet` 省略且配置了 `target_tweet_url` 时默认 `true`）；Instagram 关注 `{"target_profile_url":"https://www.instagram.com/taskhub_official/"}`；Instagram 点赞 `{"target_post_url":"https://www.instagram.com/p/ABCDEF12345/"}`；TikTok 关注 `{"target_profile_url":"https://www.tiktok.com/@taskhub_official"}`；TikTok 点赞 `{"target_video_url":"https://www.tiktok.com/@taskhub_official/video/1234567890123456789"}`；截图审核 `{"target_url":"https://example.com/campaign","instructions":"完成要求后上传截图"}`；YouTube `{"youtube_proof_link":"https://…"}`；入群校验 `{"invite_link":"https://t.me/+xxxx","telegram_chat_id":"-1001234567890"}`。
 
-**任务详情/列表中的校验字段**：`binding_verify_action` 仅用于 **账号绑定**（如 `verify-twitter`）；**`interaction_verify_action`** 用于其它需用户主动调接口的自动校验（当前为 **`verify-telegram-group`** 与 **`verify-social-action`**）。无校验时为 `null`。
+**任务详情/列表中的校验字段**：`binding_verify_action` 仅用于 **账号绑定**（如 `verify-twitter`）；**`interaction_verify_action`** 用于其它需用户主动调接口的校验（当前为 **`verify-telegram-group`**、**`verify-social-action`** 与 **`upload-proof`**）。无校验时为 `null`。
 
 ### 4.3 任务详情
 
@@ -976,7 +977,14 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 - **`rejected`**：仍不可再次报名（**409**，`code=4036`）。
 - 已接取未完成且任务**已不可报名**：**409**（`code=4097`），待后台将任务重新设为可报名后再 `POST`。
 
-截图凭证目前请在后台「任务报名」中上传 `proof_image`（后续可再接 API 上传）。
+截图审核类任务请使用 `interaction_type="screenshot_proof"`（或旧的 `watch_video` / `external_vote` 且 `verification_mode="screenshot_review"`）。用户报名后通过 `POST /api/v1/me/applications/{application_id}/upload-proof/` 上传截图，后台在「任务报名」查看 `proof_image` 后审核通过/拒绝。
+
+上传截图接口：
+
+- 请求方式：`multipart/form-data`
+- 文件字段：`proof_image`（兼容 `image` / `file`）
+- 支持格式：JPG、PNG、WEBP、GIF，最大 10MB
+- 成功后报名保持 `pending`，记录 `proof_image` 与 `self_verified_at`，等待后台审核；后台审核通过后才发放任务奖励。
 
 ### 5.2 校验 Twitter 绑定并完成（用户）
 
@@ -1280,7 +1288,9 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | POST | `/api/v1/me/applications/{application_id}/verify-youtube/` | YouTube 绑定类：简介含 youtube_proof_link 时拉取 about 页校验后自动录用 | 是 |
 | POST | `/api/v1/me/applications/{application_id}/verify-instagram/` | Instagram 绑定：含证明链接时仅 Apify 校验（须配 APIFY_API_TOKEN） | 是 |
 | POST | `/api/v1/me/applications/{application_id}/verify-tiktok/` | TikTok 绑定：转发指定视频后 Apify 拉 Reposts 校验（须配 APIFY_API_TOKEN，默认 clockworks/tiktok-scraper） | 是 |
+| POST | `/api/v1/me/applications/{application_id}/verify-social-action/` | 关注 / 点赞 / 评论类任务：用户完成站外动作后手动确认完成并自动录用 | 是 |
 | POST | `/api/v1/me/applications/{application_id}/verify-telegram-group/` | 加入 Telegram 群任务：Bot getChatMember 校验已入群（须 TELEGRAM_BOT_TOKEN + 任务配置 telegram_chat_id） | 是 |
+| POST | `/api/v1/me/applications/{application_id}/upload-proof/` | 上传截图审核任务：multipart proof_image/image/file；提交后保持待处理，由后台审核发奖 | 是 |
 | GET | `/api/v1/tasks/{task_id}/applications/` | 发布人查看报名列表 | 是 |
 | PATCH / POST | `/api/v1/applications/{application_id}/` | 发布人审核报名 | 是 |
 | GET | `/api/v1/me/published-tasks/` | 我发布的任务 | 是 |

@@ -118,6 +118,11 @@ urlpatterns = [
         api_views.application_telegram_group_verify_api,
         name="taskhub-application-verify-telegram-group",
     ),
+    path(
+        "me/applications/<int:application_id>/upload-proof/",
+        api_views.application_upload_proof_api,
+        name="taskhub-application-upload-proof",
+    ),
     path("categories/", api_views.category_list_api, name="taskhub-categories"),
     path("tasks/", api_views.task_collection_api, name="taskhub-task-collection"),
     path("tasks/<int:task_id>/", api_views.task_detail_api, name="taskhub-task-detail"),

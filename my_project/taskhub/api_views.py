@@ -1,7 +1,9 @@
 import json
+import os
 from datetime import datetime, time
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+from uuid import uuid4
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, IntegrityError, OperationalError, connections, transaction
@@ -199,6 +201,9 @@ def binding_reference_url(task: Task) -> str | None:
         Task.INTERACTION_FOLLOW,
         Task.INTERACTION_LIKE,
         Task.INTERACTION_COMMENT,
+        Task.INTERACTION_WATCH_VIDEO,
+        Task.INTERACTION_EXTERNAL_VOTE,
+        Task.INTERACTION_SCREENSHOT_PROOF,
     }:
         for key in (
             "target_like_url",
@@ -208,7 +213,9 @@ def binding_reference_url(task: Task) -> str | None:
             "tiktok_profile_url",
             "target_tweet_url",
             "target_video_url",
+            "target_page_url",
             "target_url",
+            "proof_target_url",
         ):
             s = (cfg.get(key) or "").strip()
             if s:
@@ -284,6 +291,8 @@ def interaction_verify_action(task: Task) -> str | None:
         return "verify-telegram-group"
     if _interaction_supports_explicit_self_verify(task):
         return "verify-social-action"
+    if task.verification_mode == Task.VERIFY_SCREENSHOT:
+        return "upload-proof"
     return None
 
 
@@ -787,6 +796,13 @@ def _task_applications_queryset_for_record_tabs(user):
                     Q(status=TaskApplication.STATUS_ACCEPTED)
                     & (Q(reward_paid_at__isnull=False) | ~pay),
                     then=Value(RECORD_STATUS_COMPLETED),
+                ),
+                When(
+                    Q(status=TaskApplication.STATUS_PENDING)
+                    & open_tasks
+                    & Q(task__verification_mode=Task.VERIFY_SCREENSHOT)
+                    & ~proof_ready,
+                    then=Value(RECORD_STATUS_IN_PROGRESS),
                 ),
                 When(
                     Q(status=TaskApplication.STATUS_PENDING) & open_tasks,
@@ -1772,6 +1788,66 @@ def application_review_api(request, application_id):
         elif last_granted.get("reason") == "no_reward_configured":
             msg += "（本任务未配置奖励金额，钱包无变动）"
     return api_response(data, message=msg)
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["POST"])
+def application_upload_proof_api(request, application_id):
+    """上传截图凭证：用户提交后保持 pending，由后台在「任务报名」里审核通过/拒绝。"""
+    try:
+        application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
+    except TaskApplication.DoesNotExist:
+        return api_error("报名记录不存在", code=4322, status=404)
+
+    if application.applicant_id != request.api_user.id:
+        return api_error("只能提交自己的任务凭证", code=4323, status=403)
+
+    task = application.task
+    if task.verification_mode != Task.VERIFY_SCREENSHOT:
+        return api_error("该任务不需要上传截图凭证", code=4324, status=400)
+    if task.status in (Task.STATUS_DRAFT, Task.STATUS_CLOSED):
+        return api_error("任务已下线，无法提交凭证", code=4325, status=400)
+    if task.status == Task.STATUS_COMPLETED and task.deadline and task.deadline < timezone.now():
+        return api_error("任务已到期结束，无法提交凭证", code=4326, status=400)
+    if application.status != TaskApplication.STATUS_PENDING:
+        return api_error("当前报名已处理，无需再次提交凭证", code=4327, status=400)
+
+    uploaded = request.FILES.get("proof_image") or request.FILES.get("image") or request.FILES.get("file")
+    if not uploaded:
+        return api_error("请上传 proof_image 图片文件", code=4328, status=400)
+
+    if uploaded.size > 10 * 1024 * 1024:
+        return api_error("截图不能超过 10MB", code=4329, status=400)
+
+    ext = os.path.splitext(uploaded.name or "")[1].lower()
+    allowed_exts = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    content_type = (getattr(uploaded, "content_type", "") or "").lower()
+    if ext not in allowed_exts or not content_type.startswith("image/"):
+        return api_error("仅支持 JPG、PNG、WEBP、GIF 图片", code=4330, status=400)
+
+    filename = f"proof_{application.id}_{uuid4().hex}{ext}"
+    now = timezone.now()
+    try:
+        with transaction.atomic():
+            application = TaskApplication.objects.select_for_update().select_related("task", "applicant").get(
+                pk=application_id
+            )
+            if application.status != TaskApplication.STATUS_PENDING:
+                return api_error("报名状态已变更，请刷新页面", code=4331, status=409)
+            if application.proof_image:
+                application.proof_image.delete(save=False)
+            application.proof_image.save(filename, uploaded, save=False)
+            application.self_verified_at = now
+            application.save(update_fields=["proof_image", "self_verified_at", "updated_at"])
+    except OperationalError:
+        return api_error("系统繁忙，请稍后再试。", code=4332, status=500)
+
+    application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
+    return api_response(
+        {"application": serialize_application(application, request)},
+        message="凭证已提交，请等待后台审核",
+    )
 
 
 @csrf_exempt

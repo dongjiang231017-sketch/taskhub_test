@@ -279,6 +279,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         "加入 Telegram 群任务：Bot getChatMember 校验已入群（须 TELEGRAM_BOT_TOKEN + 任务配置 telegram_chat_id）",
         True,
     ),
+    PublicEndpoint(
+        ("POST",),
+        "me/applications/<int:application_id>/upload-proof/",
+        "上传截图审核任务：multipart proof_image/image/file；提交后保持待处理，由后台审核发奖",
+        True,
+    ),
     PublicEndpoint(("GET",), "tasks/<int:task_id>/applications/", "发布人查看报名列表", True),
     PublicEndpoint(("PATCH", "POST"), "applications/<int:application_id>/", "发布人审核报名", True),
     PublicEndpoint(("GET",), "me/published-tasks/", "我发布的任务", True),

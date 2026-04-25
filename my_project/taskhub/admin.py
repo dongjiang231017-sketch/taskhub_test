@@ -157,7 +157,9 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             "若要在用户报名后<strong>自动校验已入群</strong>，再加 <code>telegram_chat_id</code>（群或超级群 id，如 <code>-100…</code>），"
             "并将与本站 Mini App 使用的 Bot 拉进群且给予<strong>拉人/读成员</strong>权限；接口字段 <code>interaction_verify_action</code> 会为 "
             "<code>verify-telegram-group</code>，用户须已用 Telegram 登录。示例：<br><code>{}</code></li>"
-            "<li><strong>看视频/投票</strong>：详细规则写「任务描述」；截图在「任务报名」里上传。可选：<br><code>{}</code></li>"
+            "<li><strong>上传截图审核</strong>：把「必做任务类型」设为<strong>上传截图审核</strong>；"
+            "用户前台接任务后上传截图，后台在「任务报名」里查看凭证并审核通过/拒绝。"
+            "可在 JSON 写目标链接或说明，前台会展示并让用户打开：<br><code>{}</code></li>"
             "</ul>",
             '{"target_tweet_url":"https://x.com/账号/status/推文ID","require_retweet":true,"require_follow":false,"target_follow_username":""}',
             '{"target_follow_username":"taskhub_official","target_profile_url":"https://x.com/taskhub_official"}',
@@ -171,7 +173,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             '{"facebook_proof_link":"https://www.facebook.com/你的主页路径/…"}',
             '{"target_video_url":"https://www.tiktok.com/@官方号/video/数字ID","require_repost":true}',
             '{"invite_link":"https://t.me/+xxxx","telegram_chat_id":"-1001234567890"}',
-            '{"min_watch_seconds":30}',
+            '{"target_url":"https://example.com/campaign","instructions":"完成页面要求后上传截图，等待后台审核"}',
         )
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):

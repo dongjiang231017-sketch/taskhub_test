@@ -55,6 +55,7 @@ class Task(models.Model):
     INTERACTION_WATCH_VIDEO = "watch_video"
     INTERACTION_EXTERNAL_VOTE = "external_vote"
     INTERACTION_JOIN_COMMUNITY = "join_community"
+    INTERACTION_SCREENSHOT_PROOF = "screenshot_proof"
     INTERACTION_CHOICES = (
         (INTERACTION_NONE, "无（不按下面规则校验）"),
         (INTERACTION_ACCOUNT_BINDING, "账号绑定（首页「绑定 Twitter/TikTok…」卡片）"),
@@ -64,6 +65,7 @@ class Task(models.Model):
         (INTERACTION_COMMENT, "评论"),
         (INTERACTION_WATCH_VIDEO, "观看视频"),
         (INTERACTION_EXTERNAL_VOTE, "外部网页投票"),
+        (INTERACTION_SCREENSHOT_PROOF, "上传截图审核"),
     )
 
     BINDING_PLATFORM_NONE = ""
@@ -265,7 +267,11 @@ class Task(models.Model):
             self.INTERACTION_JOIN_COMMUNITY,
         ):
             return self.VERIFY_USER_SELF
-        if self.interaction_type in (self.INTERACTION_WATCH_VIDEO, self.INTERACTION_EXTERNAL_VOTE):
+        if self.interaction_type in (
+            self.INTERACTION_WATCH_VIDEO,
+            self.INTERACTION_EXTERNAL_VOTE,
+            self.INTERACTION_SCREENSHOT_PROOF,
+        ):
             return self.VERIFY_SCREENSHOT
         return self.VERIFY_USER_SELF
 
