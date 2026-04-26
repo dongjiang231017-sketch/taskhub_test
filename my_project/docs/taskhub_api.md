@@ -1281,7 +1281,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/me/home/` | 首页聚合（用户/钱包/累计收益/签到周历） | 是 |
 | GET | `/api/v1/me/center/` | 个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in） | 是 |
 | GET | `/api/v1/me/rewards/ledger/` | 收益与账单明细（钱包账变分页；summary 为累计入账） | 是 |
-| GET / POST | `/api/v1/me/recharges/` | USDT 充值：GET 支持网络与记录；POST 提交 TRC20/ERC20/BEP20 TxHash 待后台审核入账 | 是 |
+| GET / POST | `/api/v1/me/recharges/` | USDT 自动充值：GET 返回用户专属地址与记录；POST 可按链获取专属地址，无需提交 TxHash | 是 |
 | GET / POST | `/api/v1/me/withdrawals/` | 提现：GET 记录与汇总；POST 发起（扣 USDT、BEP20 地址） | 是 |
 | POST | `/api/v1/me/membership/purchase/` | 购买/升级会员等级：body.level；从钱包 USDT 扣除后台配置的加入费用 | 是 |
 | GET | `/api/v1/me/bindings/accounts/` | 账号管理：各平台绑定状态与开放必做绑定任务 | 是 |

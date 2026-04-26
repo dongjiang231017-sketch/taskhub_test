@@ -104,7 +104,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET", "POST"),
         "me/recharges/",
-        "USDT 充值：GET 支持网络与记录；POST 提交 TRC20/ERC20/BEP20 TxHash 待后台审核入账",
+        "USDT 自动充值：GET 返回用户专属地址与充值记录；POST 可主动获取某条链的专属地址，无需提交 TxHash",
         True,
     ),
     PublicEndpoint(

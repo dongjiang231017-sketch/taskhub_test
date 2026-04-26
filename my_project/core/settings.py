@@ -414,7 +414,12 @@ SIMPLEUI_CONFIG = {
                     "url": "/admin/wallets/rechargenetworkconfig/",
                 },
                 {
-                    "name": "充值申请",
+                    "name": "用户充值地址",
+                    "icon": "fas fa-address-card",
+                    "url": "/admin/wallets/userrechargeaddress/",
+                },
+                {
+                    "name": "充值流水",
                     "icon": "fas fa-coins",
                     "url": "/admin/wallets/rechargerequest/",
                 },

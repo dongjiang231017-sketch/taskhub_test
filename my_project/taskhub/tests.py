@@ -8,7 +8,8 @@ from django.contrib.auth import get_user_model
 
 from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
-from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, Wallet
+from wallets.auto_recharge import DetectedTransfer, ensure_user_recharge_address, sync_network_recharges
+from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, UserRechargeAddress, Wallet
 
 from django.db import DatabaseError
 from django.test import SimpleTestCase
@@ -268,40 +269,82 @@ class ProfileLanguagePreferenceTests(TestCase):
 
 
 class RechargeAndMembershipTests(TestCase):
-    def test_user_can_submit_recharge_and_admin_credit_adds_usdt(self):
+    _TEST_MNEMONIC = "test test test test test test test test test test test junk"
+    _TEST_COLLECTOR_PRIVATE_KEY = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+    def test_get_recharges_returns_dedicated_address(self):
         user = FrontendUser.objects.create(username="recharge_api_user", phone="13800000041", password="pass123456")
         token = ApiToken.issue_for_user(user)
         RechargeNetworkConfig.objects.update_or_create(
-            chain=RechargeNetworkConfig.CHAIN_TRC20,
+            chain=RechargeNetworkConfig.CHAIN_ERC20,
             defaults={
-                "display_name": "USDT-TRC20",
-                "deposit_address": "TDepositAddressForTaskHub",
+                "display_name": "USDT-ERC20",
+                "token_contract_address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "rpc_endpoint": "https://eth.llamarpc.com",
+                "master_mnemonic": self._TEST_MNEMONIC,
+                "collector_address": "0x0000000000000000000000000000000000001000",
+                "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
                 "min_amount_usdt": Decimal("5.00"),
+                "confirmations_required": 6,
                 "is_active": True,
             },
         )
 
-        response = self.client.post(
+        response = self.client.get(
             reverse("taskhub-me-recharges"),
-            data={"chain": "TRC20", "amount": "12.50", "tx_hash": "abc123456789"},
-            content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {token.key}",
         )
 
         self.assertEqual(response.status_code, 200)
-        req = RechargeRequest.objects.get(user=user)
-        self.assertEqual(req.status, RechargeRequest.STATUS_PENDING)
-        req.credit_to_wallet()
+        payload = response.json()["data"]
+        target = next(row for row in payload["networks"] if row["chain"] == RechargeNetworkConfig.CHAIN_ERC20)
+        self.assertTrue(target["deposit_address"].startswith("0x"))
+        self.assertTrue(target["is_configured"])
+        self.assertTrue(UserRechargeAddress.objects.filter(user=user, network__chain="ERC20").exists())
+
+    @patch("wallets.auto_recharge.EvmUsdtClient")
+    def test_sync_network_recharges_detects_and_credits_confirmed_transfer(self, mock_client_cls):
+        user = FrontendUser.objects.create(username="recharge_sync_user", phone="13800000043", password="pass123456")
+        network, _ = RechargeNetworkConfig.objects.update_or_create(
+            chain=RechargeNetworkConfig.CHAIN_ERC20,
+            defaults={
+                "display_name": "USDT-ERC20",
+                "token_contract_address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "rpc_endpoint": "https://eth.llamarpc.com",
+                "master_mnemonic": self._TEST_MNEMONIC,
+                "collector_address": "0x0000000000000000000000000000000000001000",
+                "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
+                "min_amount_usdt": Decimal("1.00"),
+                "confirmations_required": 2,
+                "is_active": True,
+            },
+        )
+        addr = ensure_user_recharge_address(user, network)
+        self.assertIsNotNone(addr)
+
+        mock_client = mock_client_cls.return_value
+        mock_client.latest_block.return_value = 120
+        mock_client.list_new_transfers.return_value = [
+            DetectedTransfer(
+                tx_hash="0xabc123",
+                log_index=0,
+                from_address="0x0000000000000000000000000000000000002000",
+                to_address=addr.address,
+                amount=Decimal("12.50"),
+                block_number=118,
+                confirmations=3,
+                raw_payload={"demo": True},
+            )
+        ]
+
+        stats = sync_network_recharges(network)
+
+        self.assertEqual(stats["credited"], 1)
+        req = RechargeRequest.objects.get(user=user, tx_hash="0xabc123", source_type=RechargeRequest.SOURCE_AUTO)
+        self.assertEqual(req.status, RechargeRequest.STATUS_COMPLETED)
+        self.assertIsNotNone(req.credited_transaction_id)
         wallet = Wallet.objects.get(user=user)
         self.assertEqual(str(wallet.balance), "12.50")
-        self.assertTrue(
-            Transaction.objects.filter(
-                wallet=wallet,
-                change_type="recharge",
-                asset=Transaction.ASSET_USDT,
-                amount="12.50",
-            ).exists()
-        )
 
     def test_user_can_purchase_membership_with_wallet_balance(self):
         user = FrontendUser.objects.create(

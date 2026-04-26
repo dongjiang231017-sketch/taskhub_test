@@ -207,7 +207,7 @@ class WithdrawalRequest(models.Model):
 
 
 class RechargeNetworkConfig(models.Model):
-    """USDT 充值网络与收款地址配置。"""
+    """USDT 自动充值网络配置。"""
 
     CHAIN_TRC20 = "TRC20"
     CHAIN_ERC20 = "ERC20"
@@ -224,8 +224,54 @@ class RechargeNetworkConfig(models.Model):
         max_length=160,
         blank=True,
         default="",
-        verbose_name="平台收款地址",
-        db_comment="用户充值时展示的 USDT 收款地址；可先留空，配置后再开放",
+        verbose_name="旧版固定充值地址（已弃用）",
+        db_comment="旧版人工提单模式遗留字段；新逻辑使用每个用户的独立充值地址",
+    )
+    token_contract_address = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        verbose_name="USDT 合约地址",
+        db_comment="ERC20/BEP20/TRC20 对应的 USDT 合约地址",
+    )
+    rpc_endpoint = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="RPC / API 地址",
+        db_comment="EVM 填 JSON-RPC；TRON 填 fullnode / TronGrid 根地址",
+    )
+    api_key = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="链上 API Key",
+        db_comment="如 TronGrid API Key；留空则按公共节点访问",
+    )
+    master_mnemonic = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="HD 主助记词",
+        db_comment="用于给每个用户派生独立充值地址；请妥善保管",
+    )
+    mnemonic_passphrase = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="助记词附加密码",
+        db_comment="若助记词无附加密码可留空",
+    )
+    collector_address = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        verbose_name="归集地址",
+        db_comment="链上充值自动归集到的总地址",
+    )
+    collector_private_key = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="归集/手续费私钥",
+        db_comment="用于给充值地址补 Gas 及归集 USDT；建议仅管理员可见",
     )
     min_amount_usdt = models.DecimalField(
         max_digits=20,
@@ -235,6 +281,38 @@ class RechargeNetworkConfig(models.Model):
         verbose_name="最低充值 USDT",
     )
     confirmations_required = models.PositiveSmallIntegerField(default=1, verbose_name="确认数要求")
+    token_decimals = models.PositiveSmallIntegerField(default=6, verbose_name="Token 精度")
+    evm_chain_id = models.PositiveBigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="EVM Chain ID",
+        db_comment="ERC20/BEP20 使用；TRC20 留空",
+    )
+    next_derivation_index = models.PositiveIntegerField(default=0, verbose_name="下一个派生序号")
+    scan_from_block = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="扫链起始块",
+        db_comment="EVM 网络首次扫链的起始块；留空则首次从最近区块回溯",
+    )
+    sweep_enabled = models.BooleanField(default=True, verbose_name="自动归集")
+    min_sweep_amount_usdt = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=Decimal("1.00"),
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="最小归集 USDT",
+    )
+    topup_native_amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        default=Decimal("0.00030000"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="补 Gas 数量",
+        db_comment="EVM 为 ETH/BNB，TRC20 为 TRX",
+    )
+    token_transfer_gas_limit = models.PositiveIntegerField(default=100000, verbose_name="Token 转账 Gas Limit")
+    tron_fee_limit_sun = models.PositiveBigIntegerField(default=30000000, verbose_name="TRON Fee Limit (sun)")
     sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="排序")
     is_active = models.BooleanField(default=True, verbose_name="启用")
     instructions = models.TextField(blank=True, default="", verbose_name="充值说明")
@@ -249,17 +327,116 @@ class RechargeNetworkConfig(models.Model):
     def __str__(self):
         return f"{self.display_name} ({self.chain})"
 
+    @property
+    def is_evm(self) -> bool:
+        return self.chain in {self.CHAIN_ERC20, self.CHAIN_BEP20}
+
+    @property
+    def is_tron(self) -> bool:
+        return self.chain == self.CHAIN_TRC20
+
+    @property
+    def native_symbol(self) -> str:
+        if self.chain == self.CHAIN_ERC20:
+            return "ETH"
+        if self.chain == self.CHAIN_BEP20:
+            return "BNB"
+        return "TRX"
+
+    @property
+    def is_auto_ready(self) -> bool:
+        if not self.is_active:
+            return False
+        required = [
+            (self.token_contract_address or "").strip(),
+            (self.rpc_endpoint or "").strip(),
+            (self.master_mnemonic or "").strip(),
+            (self.collector_address or "").strip(),
+            (self.collector_private_key or "").strip(),
+        ]
+        return all(required)
+
+    def build_account_path(self, index: int) -> str:
+        coin_type = "195" if self.is_tron else "60"
+        return f"m/44'/{coin_type}'/0'/0/{int(index)}"
+
+
+class UserRechargeAddress(models.Model):
+    STATUS_ACTIVE = "active"
+    STATUS_ARCHIVED = "archived"
+    STATUS_CHOICES = (
+        (STATUS_ACTIVE, "启用"),
+        (STATUS_ARCHIVED, "归档"),
+    )
+
+    user = models.ForeignKey(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="recharge_addresses",
+        verbose_name="用户",
+    )
+    network = models.ForeignKey(
+        RechargeNetworkConfig,
+        on_delete=models.CASCADE,
+        related_name="user_addresses",
+        verbose_name="充值网络",
+    )
+    address = models.CharField(max_length=160, unique=True, verbose_name="充值地址")
+    address_hex = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        verbose_name="地址 Hex",
+        db_comment="TRON 用于链上接口的 41 前缀 hex；EVM 为 0x 地址",
+    )
+    derivation_index = models.PositiveIntegerField(verbose_name="派生序号")
+    account_path = models.CharField(max_length=128, verbose_name="派生路径")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_ACTIVE, verbose_name="状态")
+    last_seen_at = models.DateTimeField(blank=True, null=True, verbose_name="最近发现入账时间")
+    last_swept_at = models.DateTimeField(blank=True, null=True, verbose_name="最近归集时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "用户充值地址"
+        verbose_name_plural = verbose_name
+        db_table = "wallet_user_recharge_address"
+        ordering = ("network__sort_order", "user_id", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("user", "network"), name="uniq_user_recharge_address"),
+            models.UniqueConstraint(fields=("network", "derivation_index"), name="uniq_network_derivation_index"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} {self.network.chain} {self.address}"
+
 
 class RechargeRequest(models.Model):
-    """用户提交的 USDT 充值申请；后台审核通过后入账。"""
+    """链上充值流水：自动发现、自动确认、自动入账。"""
 
     STATUS_PENDING = "pending"
     STATUS_COMPLETED = "completed"
     STATUS_REJECTED = "rejected"
     STATUS_CHOICES = (
-        (STATUS_PENDING, "待审核"),
-        (STATUS_COMPLETED, "已入账"),
-        (STATUS_REJECTED, "已拒绝"),
+        (STATUS_PENDING, "确认中"),
+        (STATUS_COMPLETED, "已到账"),
+        (STATUS_REJECTED, "失败"),
+    )
+    SOURCE_MANUAL = "manual_submission"
+    SOURCE_AUTO = "chain_auto"
+    SOURCE_CHOICES = (
+        (SOURCE_MANUAL, "人工提单（旧版）"),
+        (SOURCE_AUTO, "链上自动发现"),
+    )
+    SWEEP_NONE = "none"
+    SWEEP_PENDING = "pending"
+    SWEEP_COMPLETED = "completed"
+    SWEEP_FAILED = "failed"
+    SWEEP_CHOICES = (
+        (SWEEP_NONE, "未归集"),
+        (SWEEP_PENDING, "归集中"),
+        (SWEEP_COMPLETED, "已归集"),
+        (SWEEP_FAILED, "归集失败"),
     )
 
     user = models.ForeignKey(
@@ -267,7 +444,23 @@ class RechargeRequest(models.Model):
         on_delete=models.CASCADE,
         related_name="recharge_requests",
         verbose_name="用户",
-        db_comment="提交充值的前台用户",
+        db_comment="该笔链上充值归属的前台用户",
+    )
+    network = models.ForeignKey(
+        RechargeNetworkConfig,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recharge_requests",
+        verbose_name="网络配置",
+    )
+    user_address = models.ForeignKey(
+        UserRechargeAddress,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recharge_requests",
+        verbose_name="用户充值地址",
     )
     amount = models.DecimalField(
         max_digits=20,
@@ -281,12 +474,22 @@ class RechargeRequest(models.Model):
         blank=True,
         default="",
         verbose_name="收款地址快照",
-        db_comment="用户提交时平台展示的地址快照",
+        db_comment="用户专属充值地址快照",
     )
     from_address = models.CharField(max_length=160, blank=True, default="", verbose_name="付款地址")
     tx_hash = models.CharField(max_length=160, verbose_name="交易哈希 TxHash")
+    log_index = models.PositiveIntegerField(default=0, verbose_name="日志序号")
+    source_type = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_MANUAL,
+        verbose_name="来源",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="状态")
     reject_reason = models.CharField(max_length=255, blank=True, default="", verbose_name="拒绝原因")
+    token_contract_address = models.CharField(max_length=160, blank=True, default="", verbose_name="合约地址")
+    block_number = models.BigIntegerField(blank=True, null=True, verbose_name="区块高度")
+    confirmations = models.PositiveIntegerField(default=0, verbose_name="确认数")
     credited_transaction = models.ForeignKey(
         Transaction,
         on_delete=models.SET_NULL,
@@ -295,7 +498,18 @@ class RechargeRequest(models.Model):
         related_name="recharge_requests",
         verbose_name="入账账变",
     )
+    credited_at = models.DateTimeField(blank=True, null=True, verbose_name="到账时间")
     reviewed_at = models.DateTimeField(blank=True, null=True, verbose_name="审核时间")
+    sweep_status = models.CharField(
+        max_length=20,
+        choices=SWEEP_CHOICES,
+        default=SWEEP_NONE,
+        verbose_name="归集状态",
+    )
+    sweep_tx_hash = models.CharField(max_length=160, blank=True, default="", verbose_name="归集交易哈希")
+    swept_at = models.DateTimeField(blank=True, null=True, verbose_name="归集完成时间")
+    last_error = models.CharField(max_length=255, blank=True, default="", verbose_name="最近错误")
+    raw_payload = models.JSONField(default=dict, blank=True, verbose_name="链上原始载荷")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="提交时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -305,14 +519,14 @@ class RechargeRequest(models.Model):
         db_table = "wallet_recharge_request"
         ordering = ("-created_at",)
         constraints = [
-            models.UniqueConstraint(fields=("chain", "tx_hash"), name="uniq_recharge_chain_tx_hash"),
+            models.UniqueConstraint(fields=("chain", "tx_hash", "log_index"), name="uniq_recharge_chain_tx_hash_log"),
         ]
 
     def __str__(self):
         return f"{self.user} {self.amount} USDT {self.chain}"
 
     def credit_to_wallet(self) -> Transaction:
-        """审核通过后入账；幂等，避免重复发放。"""
+        """链上确认完成后入账；幂等，避免重复发放。"""
         if self.credited_transaction_id:
             return self.credited_transaction
         with transaction.atomic():
@@ -337,7 +551,35 @@ class RechargeRequest(models.Model):
             wallet.save(create_transaction=False)
             req.status = RechargeRequest.STATUS_COMPLETED
             req.credited_transaction = tx
-            req.reviewed_at = timezone.now()
-            req.save(update_fields=["status", "credited_transaction", "reviewed_at", "updated_at"])
+            now = timezone.now()
+            req.reviewed_at = now
+            req.credited_at = now
+            req.save(
+                update_fields=[
+                    "status",
+                    "credited_transaction",
+                    "reviewed_at",
+                    "credited_at",
+                    "updated_at",
+                ]
+            )
             self.refresh_from_db()
             return tx
+
+    def mark_sweep_pending(self, tx_hash: str) -> None:
+        self.sweep_status = self.SWEEP_PENDING
+        self.sweep_tx_hash = (tx_hash or "").strip()
+        self.last_error = ""
+        self.save(update_fields=["sweep_status", "sweep_tx_hash", "last_error", "updated_at"])
+
+    def mark_swept(self) -> None:
+        now = timezone.now()
+        self.sweep_status = self.SWEEP_COMPLETED
+        self.swept_at = now
+        self.last_error = ""
+        self.save(update_fields=["sweep_status", "swept_at", "last_error", "updated_at"])
+
+    def mark_sweep_failed(self, error: str) -> None:
+        self.sweep_status = self.SWEEP_FAILED
+        self.last_error = (error or "")[:255]
+        self.save(update_fields=["sweep_status", "last_error", "updated_at"])

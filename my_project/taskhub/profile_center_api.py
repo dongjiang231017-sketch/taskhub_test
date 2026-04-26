@@ -17,6 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from users.models import FrontendUser
+from wallets.auto_recharge import ensure_user_recharge_address
 from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, Wallet, WithdrawalRequest
 
 from .api_views import (
@@ -196,16 +197,23 @@ def _withdraw_fee_quote(user: FrontendUser, gross: Decimal | None = None) -> dic
     }
 
 
-def _serialize_recharge_network(network: RechargeNetworkConfig) -> dict:
+def _serialize_recharge_network(network: RechargeNetworkConfig, user: FrontendUser | None = None) -> dict:
+    address_row = None
+    if user is not None and network.is_auto_ready:
+        address_row = ensure_user_recharge_address(user, network)
     return {
         "id": network.id,
         "chain": network.chain,
         "display_name": network.display_name,
-        "deposit_address": network.deposit_address,
+        "deposit_address": address_row.address if address_row is not None else "",
         "min_amount_usdt": str(network.min_amount_usdt.quantize(_MONEY_QUANT)),
         "confirmations_required": network.confirmations_required,
         "instructions": network.instructions,
-        "is_configured": bool((network.deposit_address or "").strip()),
+        "is_configured": bool(address_row is not None and network.is_auto_ready),
+        "address_id": address_row.id if address_row is not None else None,
+        "auto_credit": True,
+        "auto_sweep": bool(network.sweep_enabled),
+        "native_symbol": network.native_symbol,
     }
 
 
@@ -217,9 +225,18 @@ def _serialize_recharge_request(req: RechargeRequest) -> dict:
         "deposit_address": req.deposit_address,
         "from_address": req.from_address or "",
         "tx_hash": req.tx_hash,
+        "source_type": req.source_type,
         "status": req.status,
         "status_label": req.get_status_display(),
         "reject_reason": req.reject_reason or None,
+        "block_number": req.block_number,
+        "confirmations": req.confirmations,
+        "credited_at": req.credited_at.isoformat() if req.credited_at else None,
+        "sweep_status": req.sweep_status,
+        "sweep_status_label": req.get_sweep_status_display(),
+        "sweep_tx_hash": req.sweep_tx_hash or "",
+        "swept_at": req.swept_at.isoformat() if req.swept_at else None,
+        "last_error": req.last_error or "",
         "created_at": req.created_at.isoformat(),
         "updated_at": req.updated_at.isoformat(),
         "reviewed_at": req.reviewed_at.isoformat() if req.reviewed_at else None,
@@ -474,7 +491,7 @@ def me_withdrawals_api(request):
 @require_api_login
 @require_http_methods(["GET", "POST"])
 def me_recharges_api(request):
-    """USDT 充值：GET 网络配置与记录；POST 提交链上充值 TxHash，后台审核后入账。"""
+    """USDT 自动充值：展示用户专属地址与自动到账记录。"""
     user = request.api_user
     Wallet.objects.get_or_create(user=user)
 
@@ -493,7 +510,7 @@ def me_recharges_api(request):
         rows = list(base[offset : offset + page_size])
         return api_response(
             {
-                "networks": [_serialize_recharge_network(n) for n in networks],
+                "networks": [_serialize_recharge_network(n, user) for n in networks],
                 "items": [_serialize_recharge_request(r) for r in rows],
                 "pagination": {"page": page, "page_size": page_size, "total": total},
             }
@@ -505,39 +522,22 @@ def me_recharges_api(request):
         return api_error(str(exc), code=4001, status=400)
 
     chain = str(body.get("chain") or "").strip().upper()
-    tx_hash = str(body.get("tx_hash") or body.get("hash") or "").strip()
-    from_address = str(body.get("from_address") or "").strip()
-    try:
-        amount = Decimal(str(body.get("amount"))).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
-    except Exception:
-        return api_error("amount 须为数字", code=4091, status=400)
-
     if chain not in dict(RechargeNetworkConfig.CHAIN_CHOICES):
         return api_error("chain 须为 TRC20 / ERC20 / BEP20", code=4092, status=400)
-    if amount <= Decimal("0.00"):
-        return api_error("充值金额须大于 0", code=4093, status=400)
-    if len(tx_hash) < 8:
-        return api_error("请填写有效的交易哈希 TxHash", code=4094, status=400)
 
     network = RechargeNetworkConfig.objects.filter(chain=chain, is_active=True).first()
     if network is None:
         return api_error("该充值网络暂未开放", code=4095, status=400)
-    if not (network.deposit_address or "").strip():
-        return api_error("该充值网络暂未配置收款地址，请联系客服", code=4096, status=400)
-    if amount < network.min_amount_usdt:
-        return api_error(f"最低充值金额为 {network.min_amount_usdt.quantize(_MONEY_QUANT)} USDT", code=4097, status=400)
-    if RechargeRequest.objects.filter(chain=chain, tx_hash=tx_hash).exists():
-        return api_error("该 TxHash 已提交过，请勿重复提交", code=4098, status=409)
+    if str(body.get("tx_hash") or body.get("hash") or "").strip():
+        return api_error("当前系统已改为自动到账，无需再提交 TxHash，请直接向专属地址充值。", code=4099, status=400)
+    if not network.is_auto_ready:
+        return api_error("该充值网络尚未完成自动充值配置，请联系客服。", code=4100, status=400)
 
-    req = RechargeRequest.objects.create(
-        user=user,
-        amount=amount,
-        chain=chain,
-        deposit_address=network.deposit_address,
-        from_address=from_address,
-        tx_hash=tx_hash,
+    address_row = ensure_user_recharge_address(user, network)
+    return api_response(
+        {"network": _serialize_recharge_network(network, user), "address_id": address_row.id if address_row else None},
+        message="专属充值地址已就绪，请直接转入并等待区块确认自动到账。",
     )
-    return api_response({"recharge": _serialize_recharge_request(req)}, message="充值记录已提交，等待后台审核")
 
 
 @csrf_exempt
