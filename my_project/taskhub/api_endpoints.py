@@ -103,8 +103,20 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(("GET",), "me/rewards/ledger/", "收益与账单明细（钱包账变分页；summary 为累计入账）", True),
     PublicEndpoint(
         ("GET", "POST"),
+        "me/recharges/",
+        "USDT 充值：GET 支持网络与记录；POST 提交 TRC20/ERC20/BEP20 TxHash 待后台审核入账",
+        True,
+    ),
+    PublicEndpoint(
+        ("GET", "POST"),
         "me/withdrawals/",
         "提现：GET 记录与汇总；POST 发起（扣 USDT、BEP20 地址）",
+        True,
+    ),
+    PublicEndpoint(
+        ("POST",),
+        "me/membership/purchase/",
+        "购买/升级会员等级：body.level；从钱包 USDT 扣除后台配置的加入费用",
         True,
     ),
     PublicEndpoint(("GET",), "me/bindings/accounts/", "账号管理：各平台绑定状态与开放必做绑定任务", True),

@@ -17,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from users.models import FrontendUser
-from wallets.models import Transaction, Wallet, WithdrawalRequest
+from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, Wallet, WithdrawalRequest
 
 from .api_views import (
     api_error,
@@ -193,6 +193,36 @@ def _withdraw_fee_quote(user: FrontendUser, gross: Decimal | None = None) -> dic
         "rate_label": _percent_label(rate),
         "mode": "membership_rate",
         "membership_level_name": level_config.name,
+    }
+
+
+def _serialize_recharge_network(network: RechargeNetworkConfig) -> dict:
+    return {
+        "id": network.id,
+        "chain": network.chain,
+        "display_name": network.display_name,
+        "deposit_address": network.deposit_address,
+        "min_amount_usdt": str(network.min_amount_usdt.quantize(_MONEY_QUANT)),
+        "confirmations_required": network.confirmations_required,
+        "instructions": network.instructions,
+        "is_configured": bool((network.deposit_address or "").strip()),
+    }
+
+
+def _serialize_recharge_request(req: RechargeRequest) -> dict:
+    return {
+        "id": req.id,
+        "amount": str(req.amount.quantize(_MONEY_QUANT)),
+        "chain": req.chain,
+        "deposit_address": req.deposit_address,
+        "from_address": req.from_address or "",
+        "tx_hash": req.tx_hash,
+        "status": req.status,
+        "status_label": req.get_status_display(),
+        "reject_reason": req.reject_reason or None,
+        "created_at": req.created_at.isoformat(),
+        "updated_at": req.updated_at.isoformat(),
+        "reviewed_at": req.reviewed_at.isoformat() if req.reviewed_at else None,
     }
 
 
@@ -437,6 +467,146 @@ def me_withdrawals_api(request):
             }
         },
         message="提现申请已提交",
+    )
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET", "POST"])
+def me_recharges_api(request):
+    """USDT 充值：GET 网络配置与记录；POST 提交链上充值 TxHash，后台审核后入账。"""
+    user = request.api_user
+    Wallet.objects.get_or_create(user=user)
+
+    if request.method == "GET":
+        try:
+            page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
+            page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
+        except ValueError as exc:
+            return api_error(str(exc), code=4001, status=400)
+
+        page_size = min(page_size, 50)
+        networks = list(RechargeNetworkConfig.objects.filter(is_active=True).order_by("sort_order", "id"))
+        base = RechargeRequest.objects.filter(user=user).order_by("-created_at")
+        total = base.count()
+        offset = (page - 1) * page_size
+        rows = list(base[offset : offset + page_size])
+        return api_response(
+            {
+                "networks": [_serialize_recharge_network(n) for n in networks],
+                "items": [_serialize_recharge_request(r) for r in rows],
+                "pagination": {"page": page, "page_size": page_size, "total": total},
+            }
+        )
+
+    try:
+        body = parse_json_body(request)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    chain = str(body.get("chain") or "").strip().upper()
+    tx_hash = str(body.get("tx_hash") or body.get("hash") or "").strip()
+    from_address = str(body.get("from_address") or "").strip()
+    try:
+        amount = Decimal(str(body.get("amount"))).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    except Exception:
+        return api_error("amount 须为数字", code=4091, status=400)
+
+    if chain not in dict(RechargeNetworkConfig.CHAIN_CHOICES):
+        return api_error("chain 须为 TRC20 / ERC20 / BEP20", code=4092, status=400)
+    if amount <= Decimal("0.00"):
+        return api_error("充值金额须大于 0", code=4093, status=400)
+    if len(tx_hash) < 8:
+        return api_error("请填写有效的交易哈希 TxHash", code=4094, status=400)
+
+    network = RechargeNetworkConfig.objects.filter(chain=chain, is_active=True).first()
+    if network is None:
+        return api_error("该充值网络暂未开放", code=4095, status=400)
+    if not (network.deposit_address or "").strip():
+        return api_error("该充值网络暂未配置收款地址，请联系客服", code=4096, status=400)
+    if amount < network.min_amount_usdt:
+        return api_error(f"最低充值金额为 {network.min_amount_usdt.quantize(_MONEY_QUANT)} USDT", code=4097, status=400)
+    if RechargeRequest.objects.filter(chain=chain, tx_hash=tx_hash).exists():
+        return api_error("该 TxHash 已提交过，请勿重复提交", code=4098, status=409)
+
+    req = RechargeRequest.objects.create(
+        user=user,
+        amount=amount,
+        chain=chain,
+        deposit_address=network.deposit_address,
+        from_address=from_address,
+        tx_hash=tx_hash,
+    )
+    return api_response({"recharge": _serialize_recharge_request(req)}, message="充值记录已提交，等待后台审核")
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["POST"])
+def me_membership_purchase_api(request):
+    """用钱包 USDT 余额购买 / 升级会员等级。"""
+    user = request.api_user
+    try:
+        body = parse_json_body(request)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    try:
+        target_level = int(body.get("level"))
+    except (TypeError, ValueError):
+        return api_error("level 须为整数", code=4101, status=400)
+
+    level_config = MembershipLevelConfig.objects.filter(level=target_level, is_active=True).first()
+    if level_config is None:
+        return api_error("会员等级不存在或未启用", code=4102, status=404)
+
+    current_level = int(user.membership_level or 0)
+    if target_level <= current_level:
+        return api_error("当前会员等级已不低于该等级，无需重复购买", code=4103, status=400)
+
+    fee = Decimal(str(level_config.join_fee_usdt)).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    with transaction.atomic():
+        Wallet.objects.get_or_create(user=user)
+        wallet = Wallet.objects.select_for_update().get(user=user)
+        if wallet.balance < fee:
+            return api_error("USDT 余额不足，请先充值", code=4104, status=400)
+
+        tx_row = None
+        if fee > Decimal("0.00"):
+            old_balance = wallet.balance
+            new_balance = (old_balance - fee).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+            tx_row = Transaction.objects.create(
+                wallet=wallet,
+                asset=Transaction.ASSET_USDT,
+                amount=-fee,
+                before_balance=old_balance,
+                after_balance=new_balance,
+                change_type="cost",
+                remark=f"购买会员等级 {level_config.name}"[:250],
+            )
+            wallet.balance = new_balance
+            wallet.save(create_transaction=False)
+
+        FrontendUser.objects.filter(pk=user.pk).update(membership_level=target_level)
+        user.membership_level = target_level
+
+    Wallet.objects.get_or_create(user=user)
+    wallet = Wallet.objects.get(user=user)
+    return api_response(
+        {
+            "membership": {
+                "level": level_config.level,
+                "name": level_config.name,
+                "join_fee_usdt": str(fee),
+            },
+            "wallet": {
+                "usdt": str(wallet.balance.quantize(_MONEY_QUANT)),
+                "th_coin": str(wallet.frozen.quantize(_MONEY_QUANT)),
+            },
+            "transaction_id": tx_row.id if tx_row else None,
+            "user": serialize_user(user),
+        },
+        message="会员购买成功",
     )
 
 

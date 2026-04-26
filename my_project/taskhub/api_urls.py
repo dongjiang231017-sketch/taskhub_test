@@ -34,7 +34,13 @@ urlpatterns = [
     path("me/home/", miniapp_api.my_home_api, name="taskhub-me-home"),
     path("me/center/", profile_center_api.me_center_api, name="taskhub-me-center"),
     path("me/rewards/ledger/", profile_center_api.me_rewards_ledger_api, name="taskhub-me-rewards-ledger"),
+    path("me/recharges/", profile_center_api.me_recharges_api, name="taskhub-me-recharges"),
     path("me/withdrawals/", profile_center_api.me_withdrawals_api, name="taskhub-me-withdrawals"),
+    path(
+        "me/membership/purchase/",
+        profile_center_api.me_membership_purchase_api,
+        name="taskhub-me-membership-purchase",
+    ),
     path("me/bindings/accounts/", profile_center_api.me_bound_accounts_api, name="taskhub-me-bindings-accounts"),
     path(
         "me/settings/notifications/",

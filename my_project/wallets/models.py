@@ -1,6 +1,10 @@
-from django.apps import apps
-from django.db import models, transaction
 from decimal import Decimal
+
+from django.apps import apps
+from django.core.validators import MinValueValidator
+from django.db import models, transaction
+from django.utils import timezone
+
 from users.models import FrontendUser # 引入前台用户模型
 
 class Wallet(models.Model):
@@ -200,3 +204,140 @@ class WithdrawalRequest(models.Model):
     @property
     def net_amount(self) -> Decimal:
         return (self.amount - self.fee).quantize(Decimal("0.01"))
+
+
+class RechargeNetworkConfig(models.Model):
+    """USDT 充值网络与收款地址配置。"""
+
+    CHAIN_TRC20 = "TRC20"
+    CHAIN_ERC20 = "ERC20"
+    CHAIN_BEP20 = "BEP20"
+    CHAIN_CHOICES = (
+        (CHAIN_TRC20, "TRC20"),
+        (CHAIN_ERC20, "ERC20"),
+        (CHAIN_BEP20, "BEP20"),
+    )
+
+    chain = models.CharField(max_length=16, choices=CHAIN_CHOICES, unique=True, verbose_name="充值网络")
+    display_name = models.CharField(max_length=64, verbose_name="展示名称", db_comment="如 USDT-TRC20")
+    deposit_address = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        verbose_name="平台收款地址",
+        db_comment="用户充值时展示的 USDT 收款地址；可先留空，配置后再开放",
+    )
+    min_amount_usdt = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=Decimal("1.00"),
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="最低充值 USDT",
+    )
+    confirmations_required = models.PositiveSmallIntegerField(default=1, verbose_name="确认数要求")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="排序")
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    instructions = models.TextField(blank=True, default="", verbose_name="充值说明")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "充值网络配置"
+        verbose_name_plural = verbose_name
+        db_table = "wallet_recharge_network_config"
+        ordering = ("sort_order", "id")
+
+    def __str__(self):
+        return f"{self.display_name} ({self.chain})"
+
+
+class RechargeRequest(models.Model):
+    """用户提交的 USDT 充值申请；后台审核通过后入账。"""
+
+    STATUS_PENDING = "pending"
+    STATUS_COMPLETED = "completed"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "待审核"),
+        (STATUS_COMPLETED, "已入账"),
+        (STATUS_REJECTED, "已拒绝"),
+    )
+
+    user = models.ForeignKey(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="recharge_requests",
+        verbose_name="用户",
+        db_comment="提交充值的前台用户",
+    )
+    amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="充值金额 USDT",
+    )
+    chain = models.CharField(max_length=16, choices=RechargeNetworkConfig.CHAIN_CHOICES, verbose_name="充值网络")
+    deposit_address = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        verbose_name="收款地址快照",
+        db_comment="用户提交时平台展示的地址快照",
+    )
+    from_address = models.CharField(max_length=160, blank=True, default="", verbose_name="付款地址")
+    tx_hash = models.CharField(max_length=160, verbose_name="交易哈希 TxHash")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="状态")
+    reject_reason = models.CharField(max_length=255, blank=True, default="", verbose_name="拒绝原因")
+    credited_transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recharge_requests",
+        verbose_name="入账账变",
+    )
+    reviewed_at = models.DateTimeField(blank=True, null=True, verbose_name="审核时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="提交时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "充值申请"
+        verbose_name_plural = verbose_name
+        db_table = "wallet_recharge_request"
+        ordering = ("-created_at",)
+        constraints = [
+            models.UniqueConstraint(fields=("chain", "tx_hash"), name="uniq_recharge_chain_tx_hash"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} {self.amount} USDT {self.chain}"
+
+    def credit_to_wallet(self) -> Transaction:
+        """审核通过后入账；幂等，避免重复发放。"""
+        if self.credited_transaction_id:
+            return self.credited_transaction
+        with transaction.atomic():
+            req = RechargeRequest.objects.select_for_update().select_related("user").get(pk=self.pk)
+            if req.credited_transaction_id:
+                self.refresh_from_db()
+                return self.credited_transaction
+            Wallet.objects.get_or_create(user=req.user)
+            wallet = Wallet.objects.select_for_update().get(user=req.user)
+            old_balance = wallet.balance
+            new_balance = (old_balance + req.amount).quantize(Decimal("0.01"))
+            tx = Transaction.objects.create(
+                wallet=wallet,
+                asset=Transaction.ASSET_USDT,
+                amount=req.amount,
+                before_balance=old_balance,
+                after_balance=new_balance,
+                change_type="recharge",
+                remark=f"USDT 充值 {req.chain}：{req.tx_hash}"[:250],
+            )
+            wallet.balance = new_balance
+            wallet.save(create_transaction=False)
+            req.status = RechargeRequest.STATUS_COMPLETED
+            req.credited_transaction = tx
+            req.reviewed_at = timezone.now()
+            req.save(update_fields=["status", "credited_transaction", "reviewed_at", "updated_at"])
+            self.refresh_from_db()
+            return tx

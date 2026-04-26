@@ -8,12 +8,12 @@ from django.contrib.auth import get_user_model
 
 from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
-from wallets.models import Transaction, Wallet
+from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, Wallet
 
 from django.db import DatabaseError
 from django.test import SimpleTestCase
 
-from taskhub.models import ApiToken, ReferralRewardConfig, Task, TaskApplication
+from taskhub.models import ApiToken, MembershipLevelConfig, ReferralRewardConfig, Task, TaskApplication
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
@@ -265,6 +265,84 @@ class ProfileLanguagePreferenceTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.preferred_language, "pt-BR")
         self.assertEqual(response.json()["data"]["user"]["preferred_language"], "pt-BR")
+
+
+class RechargeAndMembershipTests(TestCase):
+    def test_user_can_submit_recharge_and_admin_credit_adds_usdt(self):
+        user = FrontendUser.objects.create(username="recharge_api_user", phone="13800000041", password="pass123456")
+        token = ApiToken.issue_for_user(user)
+        RechargeNetworkConfig.objects.update_or_create(
+            chain=RechargeNetworkConfig.CHAIN_TRC20,
+            defaults={
+                "display_name": "USDT-TRC20",
+                "deposit_address": "TDepositAddressForTaskHub",
+                "min_amount_usdt": Decimal("5.00"),
+                "is_active": True,
+            },
+        )
+
+        response = self.client.post(
+            reverse("taskhub-me-recharges"),
+            data={"chain": "TRC20", "amount": "12.50", "tx_hash": "abc123456789"},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        req = RechargeRequest.objects.get(user=user)
+        self.assertEqual(req.status, RechargeRequest.STATUS_PENDING)
+        req.credit_to_wallet()
+        wallet = Wallet.objects.get(user=user)
+        self.assertEqual(str(wallet.balance), "12.50")
+        self.assertTrue(
+            Transaction.objects.filter(
+                wallet=wallet,
+                change_type="recharge",
+                asset=Transaction.ASSET_USDT,
+                amount="12.50",
+            ).exists()
+        )
+
+    def test_user_can_purchase_membership_with_wallet_balance(self):
+        user = FrontendUser.objects.create(
+            username="vip_buyer",
+            phone="13800000042",
+            password="pass123456",
+            membership_level=1,
+        )
+        token = ApiToken.issue_for_user(user)
+        wallet = Wallet.objects.create(user=user, balance=Decimal("80.00"))
+        MembershipLevelConfig.objects.update_or_create(
+            level=2,
+            defaults={
+                "name": "VIP2",
+                "join_fee_usdt": Decimal("50.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+
+        response = self.client.post(
+            reverse("taskhub-me-membership-purchase"),
+            data={"level": 2},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        wallet.refresh_from_db()
+        self.assertEqual(user.membership_level, 2)
+        self.assertEqual(str(wallet.balance), "30.00")
+        self.assertTrue(
+            Transaction.objects.filter(
+                wallet=wallet,
+                change_type="cost",
+                asset=Transaction.ASSET_USDT,
+                amount="-50.00",
+            ).exists()
+        )
 
 
 class AgentAdminLoginTests(TestCase):

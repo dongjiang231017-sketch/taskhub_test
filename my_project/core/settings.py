@@ -408,6 +408,16 @@ SIMPLEUI_CONFIG = {
             "name": "资金结算",
             "icon": "fas fa-wallet",
             "models": [
+                {
+                    "name": "充值网络配置",
+                    "icon": "fas fa-link",
+                    "url": "/admin/wallets/rechargenetworkconfig/",
+                },
+                {
+                    "name": "充值申请",
+                    "icon": "fas fa-coins",
+                    "url": "/admin/wallets/rechargerequest/",
+                },
                 {"name": "账变记录", "icon": "fas fa-receipt", "url": "/admin/wallets/transaction/"},
                 {
                     "name": "提现申请",
