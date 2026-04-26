@@ -19,11 +19,13 @@ from .models import (
     IntegrationSecretConfig,
     InviteAchievementClaim,
     InviteAchievementTier,
+    MembershipLevelConfig,
     ReferralRewardConfig,
     Task,
     TaskApplication,
     TaskCategory,
     TaskCompletionRecord,
+    TeamLeaderTier,
 )
 from .platform_publisher import get_task_platform_publisher, is_platform_publisher
 
@@ -458,15 +460,39 @@ class CheckInConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
 
 @admin.register(ReferralRewardConfig)
 class ReferralRewardConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
-    list_display = ("id", "direct_invite_rate", "updated_at")
+    list_display = (
+        "id",
+        "direct_invite_rate",
+        "second_task_rate",
+        "direct_recharge_rate",
+        "second_recharge_rate",
+        "updated_at",
+    )
     fieldsets = (
         (
-            "返佣规则",
+            "活动展示文案",
             {
-                "fields": ("direct_invite_rate",),
+                "fields": ("activity_title", "activity_intro"),
+                "description": "前台/机器人可直接展示这里的活动标题和简介。",
+            },
+        ),
+        (
+            "任务分成",
+            {
+                "fields": ("direct_invite_rate", "second_task_rate"),
                 "description": (
                     "下级完成任务并实际到账 <strong>USDT 任务奖励</strong> 后，"
-                    "系统按此比例自动给上级发放「推荐奖励」。例如 <code>0.10</code> 表示 10%。"
+                    "系统按一级/二级比例自动给上级发放「推荐奖励」。例如 <code>0.20</code> 表示 20%。"
+                ),
+            },
+        ),
+        (
+            "充值分佣",
+            {
+                "fields": ("direct_recharge_rate", "second_recharge_rate"),
+                "description": (
+                    "充值分佣比例供充值入账流程使用；一级下级充值按一级比例，二级下级充值按二级比例。"
+                    "后台手动拨币不会自动触发充值分佣，避免误发。"
                 ),
             },
         ),
@@ -490,6 +516,89 @@ class ReferralRewardConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(MembershipLevelConfig)
+class MembershipLevelConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "sort_order",
+        "level",
+        "name",
+        "join_fee_usdt",
+        "daily_official_task_limit",
+        "withdraw_fee_rate",
+        "can_claim_free_tasks",
+        "can_claim_official_tasks",
+        "can_claim_high_commission_tasks",
+        "unlimited_tasks",
+        "is_active",
+    )
+    list_filter = (
+        "is_active",
+        "can_claim_free_tasks",
+        "can_claim_official_tasks",
+        "can_claim_high_commission_tasks",
+        "unlimited_tasks",
+    )
+    search_fields = ("name", "description")
+    ordering = ("sort_order", "level")
+    fieldsets = (
+        (
+            "等级基础",
+            {
+                "fields": ("sort_order", "level", "name", "join_fee_usdt", "is_active"),
+                "description": "等级数值要与会员表中的 membership_level 对应，例如 VIP0 填 0，VIP1 填 1。",
+            },
+        ),
+        (
+            "任务权限",
+            {
+                "fields": (
+                    "can_claim_free_tasks",
+                    "can_claim_official_tasks",
+                    "can_claim_high_commission_tasks",
+                    "daily_official_task_limit",
+                    "unlimited_tasks",
+                ),
+                "description": "每日官方任务上限留空表示不限量；VIP1 可填 1，VIP2 可填 2，VIP3 勾选不限任务。",
+            },
+        ),
+        ("提现手续费", {"fields": ("withdraw_fee_rate",), "description": "按提现金额比例扣除；0.20 表示 20%，0 表示免手续费。"}),
+        ("说明", {"fields": ("description",)}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(TeamLeaderTier)
+class TeamLeaderTierAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "sort_order",
+        "name",
+        "direct_vip_count",
+        "target_period",
+        "team_recharge_target_usdt",
+        "team_performance_rate",
+        "is_active",
+    )
+    list_filter = ("is_active", "target_period")
+    search_fields = ("name", "description")
+    ordering = ("sort_order", "id")
+    fieldsets = (
+        (
+            "门槛",
+            {
+                "fields": ("sort_order", "name", "direct_vip_count", "team_recharge_target_usdt", "target_period", "is_active"),
+                "description": "用于配置团队长/超级代理扶持政策，如直推 VIP 人数和团队充值业绩目标。",
+            },
+        ),
+        ("提成", {"fields": ("team_performance_rate",), "description": "0.02 表示团队业绩额外提成 2%。"}),
+        ("说明", {"fields": ("description",)}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(IntegrationSecretConfig)

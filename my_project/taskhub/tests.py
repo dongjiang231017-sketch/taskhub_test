@@ -170,6 +170,80 @@ class ReferralRewardTests(TestCase):
             ).exists()
         )
 
+    def test_task_reward_grants_second_level_referrer_reward(self):
+        grandparent = FrontendUser.objects.create(username="root_agent", phone="13800000004", password="pass123456")
+        referrer = FrontendUser.objects.create(
+            username="parent_agent_2",
+            phone="13800000005",
+            password="pass123456",
+            referrer=grandparent,
+        )
+        child = FrontendUser.objects.create(
+            username="child_member_2",
+            phone="13800000006",
+            password="pass123456",
+            referrer=referrer,
+        )
+        publisher = FrontendUser.objects.create(username="publisher_2", phone="13800000007", password="pass123456")
+        task = Task.objects.create(
+            publisher=publisher,
+            title="二级返佣测试",
+            description="desc",
+            reward_usdt=Decimal("10.00"),
+            applicants_limit=1,
+            status=Task.STATUS_OPEN,
+        )
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=child,
+            status=TaskApplication.STATUS_ACCEPTED,
+            quoted_price="0.00",
+        )
+        ReferralRewardConfig.objects.create(direct_invite_rate="0.2000", second_task_rate="0.1000")
+
+        result = grant_task_completion_reward(app)
+
+        referrer_wallet = Wallet.objects.get(user=referrer)
+        grandparent_wallet = Wallet.objects.get(user=grandparent)
+        self.assertEqual(str(referrer_wallet.balance), "2.00")
+        self.assertEqual(str(grandparent_wallet.balance), "1.00")
+        self.assertEqual(result["referrer_reward_usdt"], "3.00")
+        self.assertEqual(
+            [(item["level"], item["amount"]) for item in result["referrer_rewards"]],
+            [(1, "2.00"), (2, "1.00")],
+        )
+
+    def test_recharge_transaction_grants_two_level_commission(self):
+        grandparent = FrontendUser.objects.create(username="recharge_root", phone="13800000008", password="pass123456")
+        referrer = FrontendUser.objects.create(
+            username="recharge_parent",
+            phone="13800000009",
+            password="pass123456",
+            referrer=grandparent,
+        )
+        child = FrontendUser.objects.create(
+            username="recharge_child",
+            phone="13800000010",
+            password="pass123456",
+            referrer=referrer,
+        )
+        ReferralRewardConfig.objects.create(direct_recharge_rate="0.1000", second_recharge_rate="0.0500")
+        Wallet.objects.get_or_create(user=child)
+        child_wallet = Wallet.objects.get(user=child)
+
+        Transaction.objects.create(
+            wallet=child_wallet,
+            asset=Transaction.ASSET_USDT,
+            amount=Decimal("100.00"),
+            before_balance=Decimal("0.00"),
+            after_balance=Decimal("100.00"),
+            change_type="recharge",
+            remark="测试充值",
+        )
+
+        self.assertEqual(str(Wallet.objects.get(user=referrer).balance), "10.00")
+        self.assertEqual(str(Wallet.objects.get(user=grandparent).balance), "5.00")
+
 
 class ProfileLanguagePreferenceTests(TestCase):
     def test_patch_profile_updates_preferred_language(self):

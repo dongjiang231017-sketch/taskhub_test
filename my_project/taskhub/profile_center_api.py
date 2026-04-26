@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.db import transaction
+from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Count, Sum
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -28,7 +29,7 @@ from .api_views import (
     serialize_user,
 )
 from .miniapp_api import _check_in_week_payload, _stats_for_user
-from .models import Task, TaskApplication
+from .models import MembershipLevelConfig, Task, TaskApplication
 
 _MONEY_QUANT = Decimal("0.01")
 _LEVEL_EXP_CAP = 5
@@ -160,6 +161,41 @@ def _ledger_summary_all_time(wallet: Wallet) -> tuple[Decimal, Decimal]:
     return _d(usdt_sum), _d(th_sum)
 
 
+def _percent_label(rate: Decimal) -> str:
+    pct = (Decimal(str(rate)) * Decimal("100")).normalize()
+    return f"{pct}%"
+
+
+def _withdraw_fee_quote(user: FrontendUser, gross: Decimal | None = None) -> dict:
+    fallback_fee = Decimal(str(getattr(settings, "WITHDRAW_FEE_USDT", Decimal("0.00")))).quantize(
+        _MONEY_QUANT,
+        rounding=ROUND_HALF_UP,
+    )
+    try:
+        level_config = MembershipLevelConfig.for_level(user.membership_level)
+    except (ProgrammingError, OperationalError):
+        level_config = None
+
+    if level_config is None:
+        return {
+            "fee": fallback_fee,
+            "rate": Decimal("0"),
+            "rate_label": "固定手续费",
+            "mode": "fixed",
+            "membership_level_name": None,
+        }
+
+    rate = Decimal(str(level_config.withdraw_fee_rate))
+    fee = Decimal("0.00") if gross is None else (gross * rate).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    return {
+        "fee": fee,
+        "rate": rate,
+        "rate_label": _percent_label(rate),
+        "mode": "membership_rate",
+        "membership_level_name": level_config.name,
+    }
+
+
 @csrf_exempt
 @require_api_login
 @require_http_methods(["GET"])
@@ -174,7 +210,7 @@ def me_center_api(request):
     Wallet.objects.get_or_create(user=user)
     wallet = Wallet.objects.get(user=user)
 
-    fee = getattr(settings, "WITHDRAW_FEE_USDT", Decimal("0.00"))
+    fee_quote = _withdraw_fee_quote(user)
     min_u = getattr(settings, "WITHDRAW_MIN_USDT", Decimal("2.00"))
     tg_url = getattr(settings, "TELEGRAM_COMMUNITY_URL", "") or ""
 
@@ -194,7 +230,11 @@ def me_center_api(request):
         },
         "withdraw": {
             "min_amount_usdt": str(min_u.quantize(_MONEY_QUANT)),
-            "fee_usdt": str(fee.quantize(_MONEY_QUANT)),
+            "fee_usdt": str(fee_quote["fee"].quantize(_MONEY_QUANT)),
+            "fee_rate": str(fee_quote["rate"]),
+            "fee_rate_label": fee_quote["rate_label"],
+            "fee_mode": fee_quote["mode"],
+            "membership_level_name": fee_quote["membership_level_name"],
             "chain_default": "BEP20",
             "estimated_arrival_hint": "1–3 个工作日（链上确认后到账）",
         },
@@ -339,9 +379,7 @@ def me_withdrawals_api(request):
     except Exception:
         return api_error("amount 须为数字", code=4081, status=400)
 
-    fee = getattr(settings, "WITHDRAW_FEE_USDT", Decimal("0.00")).quantize(
-        _MONEY_QUANT, rounding=ROUND_HALF_UP
-    )
+    fee = _withdraw_fee_quote(user, gross)["fee"]
     min_u = getattr(settings, "WITHDRAW_MIN_USDT", Decimal("2.00")).quantize(
         _MONEY_QUANT, rounding=ROUND_HALF_UP
     )

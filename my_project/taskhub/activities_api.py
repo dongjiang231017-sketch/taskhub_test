@@ -5,8 +5,17 @@ from __future__ import annotations
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .api_views import api_error, api_response, parse_json_body, require_api_login
+from .api_views import api_error, api_response, get_optional_api_user, parse_json_body, require_api_login
+from .invite_activity import build_invite_activity_rules_payload
 from .invite_achievements import build_invite_achievements_payload, claim_invite_achievement_tier
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def invite_activity_rules_api(request):
+    """邀请拉新活动规则：会员等级、二级分佣、团队长扶持，全部来自后台配置。"""
+    user = get_optional_api_user(request)
+    return api_response(build_invite_activity_rules_payload(user))
 
 
 @csrf_exempt

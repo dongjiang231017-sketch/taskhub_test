@@ -43,6 +43,7 @@ urlpatterns = [
     ),
     path("me/check-in/", miniapp_api.my_check_in_api, name="taskhub-me-check-in"),
     path("me/check-in/make-up/", miniapp_api.my_check_in_makeup_api, name="taskhub-me-check-in-makeup"),
+    path("invite/activity-rules/", activities_api.invite_activity_rules_api, name="taskhub-invite-activity-rules"),
     path("me/invite-achievements/", activities_api.me_invite_achievements_api, name="taskhub-me-invite-achievements"),
     path(
         "me/invite-achievements/claim/",

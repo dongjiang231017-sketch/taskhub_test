@@ -10,7 +10,8 @@ def create_withdrawal_request_model(apps, schema_editor):
     existing_tables = set(schema_editor.connection.introspection.table_names())
     if table_name in existing_tables:
         return
-    WithdrawalRequest = apps.get_model("wallets", "WithdrawalRequest")
+    from wallets.models import WithdrawalRequest
+
     schema_editor.create_model(WithdrawalRequest)
 
 
@@ -19,7 +20,8 @@ def drop_withdrawal_request_model(apps, schema_editor):
     existing_tables = set(schema_editor.connection.introspection.table_names())
     if table_name not in existing_tables:
         return
-    WithdrawalRequest = apps.get_model("wallets", "WithdrawalRequest")
+    from wallets.models import WithdrawalRequest
+
     schema_editor.delete_model(WithdrawalRequest)
 
 

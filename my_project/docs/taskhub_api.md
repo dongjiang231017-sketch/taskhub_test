@@ -373,7 +373,37 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 - `makeup_cost_th_coin`：**POST 补签**每次从用户 TH Coin 扣除；`0` 表示不扣  
 - `weekly_makeup_limit`：每自然周最多补签次数
 
-#### 2.7.6 活动邀请成就（阶梯可后台配置）
+#### 2.7.6 邀请拉新活动规则（会员等级 / 分佣 / 团队长）
+
+##### `GET /api/v1/invite/activity-rules/`
+
+| 项 | 说明 |
+| --- | --- |
+| 方法 / 路径 | `GET /api/v1/invite/activity-rules/` |
+| 需登录 | 否；若带 Bearer，会返回 `current_user_level` |
+
+后台配置位置：
+
+| 后台模块 | 可配置内容 |
+| --- | --- |
+| **任务平台 → 邀请返佣配置** | 活动标题/简介、一级/二级任务分成、一级/二级充值分佣 |
+| **任务平台 → 会员等级活动配置** | VIP 等级、加入费用、任务权限、每日官方任务领取上限、提现手续费比例 |
+| **任务平台 → 团队长扶持阶梯** | 初级代理/中级合伙人/顶级领袖等门槛、团队充值目标、额外团队业绩提成 |
+
+默认种子来自文档《关于任务邀请好友拉新活动会员等级》：VIP0/1/2/3、充值佣金 10% / 5%、任务分成 20% / 10%、团队长 2% / 5% / 10%。这些值迁移后都可在后台自行改。
+
+**成功 `data`**
+
+| 字段 | 说明 |
+| --- | --- |
+| `title` / `intro` | 活动标题与简介 |
+| `membership_levels[]` | 等级配置；含费用、任务权限、每日上限、提现手续费比例 |
+| `commission_model.recharge` | 充值一级/二级分佣比例 |
+| `commission_model.task` | 任务一级/二级分成比例 |
+| `team_leader_tiers[]` | 团队长扶持阶梯 |
+| `rendered_sections[]` | 可直接给前端/机器人展示的文案分组 |
+
+#### 2.7.7 活动邀请成就（阶梯可后台配置）
 
 与活动页「成就」中邀请人数里程碑一致：**有效邀请人数** = 当前用户的**直邀下级**中 `status=true`（账号启用）的人数，与 **`GET /api/v1/rankings/invite-leaderboard/`** / **`GET /api/v1/me/ranking/invite-overview/`** 的统计口径一致。
 
@@ -552,7 +582,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | 变量 | 说明 |
 | --- | --- |
 | `WITHDRAW_MIN_USDT` | 最低提现金额（默认 `2.00`） |
-| `WITHDRAW_FEE_USDT` | 每笔固定手续费（默认 `0.00`）；**从用户填写的提现总额中扣除**，`预计到账 = amount - fee` |
+| `WITHDRAW_FEE_USDT` | 仅作为会员等级配置表未迁移/未命中时的固定手续费兜底；正常情况下提现手续费来自 **任务平台 → 会员等级活动配置** 的 `withdraw_fee_rate` |
 | `TELEGRAM_COMMUNITY_URL` | Telegram 社区链接，出现在 `me/center/` 的 `links.telegram_community` |
 
 ---
@@ -576,7 +606,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `rank` | `position`：按「已录用任务数」全站排名；`label` 展示文案 |
 | `recent_rewards` | 最近若干条账变（不含充值、后台拨币、提现） |
 | `links.telegram_community` | 未配置时为 `null` |
-| `withdraw` | `min_amount_usdt` / `fee_usdt` / `chain_default` / `estimated_arrival_hint` |
+| `withdraw` | `min_amount_usdt` / `fee_usdt` / `fee_rate` / `fee_rate_label` / `fee_mode` / `membership_level_name` / `chain_default` / `estimated_arrival_hint` |
 
 ---
 
@@ -635,7 +665,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `to_address` | 是 | BEP20 收款地址；也支持字段名 `address` |
 | `chain` | 否 | 默认 `BEP20` |
 
-手续费为服务端配置的 `WITHDRAW_FEE_USDT`：**到账 USDT = amount - fee**，且须 **> 0**。
+手续费优先按当前用户会员等级的 `withdraw_fee_rate` 计算：**fee = amount × withdraw_fee_rate**；若配置表未迁移或未命中，才回退 `WITHDRAW_FEE_USDT` 固定手续费。**到账 USDT = amount - fee**，且须 **> 0**。
 
 **业务错误**
 
@@ -1256,12 +1286,12 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET / PATCH | `/api/v1/me/settings/notifications/` | 通知设置（占位，PATCH 暂未持久化） | 是 |
 | GET / POST | `/api/v1/me/check-in/` | 签到：GET 周历+规则；POST 今日签到（发奖，data 含 last_granted） | 是 |
 | POST | `/api/v1/me/check-in/make-up/` | 补签：body.date；先扣 makeup TH，再发与签到相同奖励；data 可有 last_spent/last_granted | 是 |
+| GET | `/api/v1/invite/activity-rules/` | 邀请拉新活动规则：会员等级、一级/二级任务分成、充值分佣、团队长阶梯（后台配置） | 否 |
 | GET | `/api/v1/me/invite-achievements/` | 活动邀请成就：overview 概览 + 后台阶梯 + 有效邀请人数 + 每档 locked/claimable/claimed | 是 |
 | POST | `/api/v1/me/invite-achievements/claim/` | 领取邀请成就：body.tier_id；发 USDT/TH 并入账 invite_achievement | 是 |
 | GET | `/api/v1/daily-tasks/` | 每日任务：后台配置 + 当日进度 + 每档 locked/claimable/claimed（自然日零点重置） | 是 |
 | POST | `/api/v1/daily-tasks/claim/` | 领取每日任务：body.definition_id；发 USDT/TH，账变 daily_task | 是 |
-| GET | `/api/v1/me/profile/` | 当前登录用户信息 | 是 |
-| PATCH | `/api/v1/me/profile/` | 更新当前用户语言偏好 | 是 |
+| GET / PATCH | `/api/v1/me/profile/` | 当前登录用户信息 / 更新语言偏好 | 是 |
 | GET | `/api/v1/categories/` | 任务分类列表 | 否 |
 | GET | `/api/v1/guides/categories/` | 新手指南：分类 Tab（GuideCategory + 兼容旧 category_key；含虚拟「全部」） | 否 |
 | GET | `/api/v1/guides/featured/` | 新手指南：置顶大卡/首条推荐（Announcement post_type=newbie_guide） | 否 |

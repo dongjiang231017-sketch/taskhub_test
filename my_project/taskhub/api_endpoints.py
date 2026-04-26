@@ -128,6 +128,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     ),
     PublicEndpoint(
         ("GET",),
+        "invite/activity-rules/",
+        "邀请拉新活动规则：会员等级、一级/二级任务分成、充值分佣、团队长阶梯（后台配置）",
+        False,
+    ),
+    PublicEndpoint(
+        ("GET",),
         "me/invite-achievements/",
         "活动邀请成就：overview 概览 + 后台阶梯 + 有效邀请人数 + 每档 locked/claimable/claimed",
         True,

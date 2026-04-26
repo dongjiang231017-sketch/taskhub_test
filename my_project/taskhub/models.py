@@ -425,10 +425,46 @@ class ReferralRewardConfig(models.Model):
     direct_invite_rate = models.DecimalField(
         max_digits=6,
         decimal_places=4,
+        default=Decimal("0.20"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="一级任务分成比例",
+        db_comment="一级下级完成任务后，按其实际到账 USDT 任务奖励乘以该比例给上级发放推荐奖励；0.20 = 20 percent",
+    )
+    second_task_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
         default=Decimal("0.10"),
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
-        verbose_name="直推返佣比例",
-        db_comment="下级完成任务后，按其实际到账 USDT 任务奖励乘以该比例给上级发放推荐奖励；0.10 = 10%",
+        verbose_name="二级任务分成比例",
+        db_comment="二级下级完成任务后，按其实际到账 USDT 任务奖励乘以该比例给上二级发放奖励；0.10 = 10 percent",
+    )
+    direct_recharge_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=Decimal("0.10"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="一级充值佣金比例",
+        db_comment="一级下级充值后，按充值 USDT 金额乘以该比例给上级发放奖励；0.10 = 10 percent",
+    )
+    second_recharge_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=Decimal("0.05"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="二级充值佣金比例",
+        db_comment="二级下级充值后，按充值 USDT 金额乘以该比例给上二级发放奖励；0.05 = 5 percent",
+    )
+    activity_title = models.CharField(
+        max_length=128,
+        default="关于任务邀请好友拉新活动会员等级",
+        verbose_name="活动标题",
+        db_comment="前台/机器人展示的邀请拉新活动标题",
+    )
+    activity_intro = models.TextField(
+        blank=True,
+        default="邀请好友加入 TaskHub，完成任务、充值会员与团队成长都可按后台配置获得奖励。",
+        verbose_name="活动简介",
+        db_comment="前台/机器人展示的活动简介，可按运营口径修改",
     )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -439,7 +475,7 @@ class ReferralRewardConfig(models.Model):
 
     def __str__(self):
         pct = (self.direct_invite_rate * Decimal("100")).quantize(Decimal("0.01"))
-        return f"邀请返佣配置（{pct}%）"
+        return f"邀请返佣配置（一级任务 {pct}%）"
 
     @classmethod
     def get(cls):
@@ -447,6 +483,119 @@ class ReferralRewardConfig(models.Model):
         if obj is None:
             obj = cls.objects.create()
         return obj
+
+
+class MembershipLevelConfig(models.Model):
+    """会员等级活动规则：费用、可接任务范围、每日官方任务数量与提现手续费。"""
+
+    level = models.PositiveSmallIntegerField(
+        unique=True,
+        verbose_name="等级数值",
+        db_comment="与 FrontendUser.membership_level 对应，例如 0=VIP0，1=VIP1",
+    )
+    name = models.CharField(max_length=32, verbose_name="等级名称", db_comment="如 VIP0 / VIP1")
+    join_fee_usdt = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="加入费用 USDT",
+        db_comment="升级/加入该等级所需 USDT；0 表示免费",
+    )
+    can_claim_free_tasks = models.BooleanField(default=True, verbose_name="可领取免费任务")
+    can_claim_official_tasks = models.BooleanField(default=False, verbose_name="可领取官方发布任务")
+    can_claim_high_commission_tasks = models.BooleanField(default=False, verbose_name="可领取高佣金任务")
+    daily_official_task_limit = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="每日官方任务领取上限",
+        db_comment="留空表示不限量；VIP1 可填 1，VIP2 可填 2",
+    )
+    unlimited_tasks = models.BooleanField(default=False, verbose_name="不限任务")
+    withdraw_fee_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="提现手续费比例",
+        db_comment="0.20 = 提现金额的 20 percent；0 = 不收手续费",
+    )
+    description = models.TextField(blank=True, default="", verbose_name="等级说明")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序", db_comment="越小越靠前")
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_membership_level_config"
+        verbose_name = "会员等级活动配置"
+        verbose_name_plural = verbose_name
+        ordering = ("sort_order", "level")
+
+    def __str__(self):
+        return f"{self.name}（Lv.{self.level}）"
+
+    @classmethod
+    def for_level(cls, level: int | None):
+        try:
+            n = int(level if level is not None else 0)
+        except (TypeError, ValueError):
+            n = 0
+        return cls.objects.filter(level=n, is_active=True).first()
+
+
+class TeamLeaderTier(models.Model):
+    """团队长 / 超级代理扶持政策阶梯。"""
+
+    PERIOD_CUMULATIVE = "cumulative"
+    PERIOD_MONTHLY = "monthly"
+    PERIOD_CHOICES = (
+        (PERIOD_CUMULATIVE, "累计"),
+        (PERIOD_MONTHLY, "每月"),
+    )
+
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序", db_comment="越小越靠前")
+    name = models.CharField(max_length=64, verbose_name="等级名称", db_comment="如 初级代理 / 中级合伙人")
+    direct_vip_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="直推 VIP 人数门槛",
+        db_comment="达到该直推 VIP 人数后满足人数门槛",
+    )
+    team_recharge_target_usdt = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="团队总充值业绩目标 USDT",
+    )
+    target_period = models.CharField(
+        max_length=16,
+        choices=PERIOD_CHOICES,
+        default=PERIOD_CUMULATIVE,
+        verbose_name="业绩周期",
+        db_comment="累计或每月",
+    )
+    team_performance_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        verbose_name="额外团队业绩提成比例",
+        db_comment="0.02 = 2 percent",
+    )
+    description = models.TextField(blank=True, default="", verbose_name="说明")
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_team_leader_tier"
+        verbose_name = "团队长扶持阶梯"
+        verbose_name_plural = verbose_name
+        ordering = ("sort_order", "id")
+
+    def __str__(self):
+        return self.name
 
 
 class CheckInRecord(models.Model):
