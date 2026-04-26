@@ -110,7 +110,7 @@ TELEGRAM_BOT_WELCOME_TEXT = os.environ.get("TELEGRAM_BOT_WELCOME_TEXT", "").repl
 # 排行 / 邀请：邀请落地页前缀（勿尾斜杠），如 https://t.me/YourBot?startapp= 或 https://task.example.com
 INVITE_LINK_BASE_URL = os.environ.get("INVITE_LINK_BASE_URL", "").strip()
 # 邀请返佣比例默认值（后台未配置「邀请返佣配置」时使用）
-INVITE_COMMISSION_RATE = Decimal(os.environ.get("INVITE_COMMISSION_RATE", "0.10"))
+INVITE_COMMISSION_RATE = Decimal(os.environ.get("INVITE_COMMISSION_RATE", "0.20"))
 # 全站「运营天数」起点（YYYY-MM-DD）；不设则用库内最早用户/任务创建日
 PLATFORM_STATS_ANCHOR_DATE = os.environ.get("PLATFORM_STATS_ANCHOR_DATE", "").strip()
 
@@ -350,6 +350,16 @@ SIMPLEUI_CONFIG = {
                     "name": "邀请返佣配置",
                     "icon": "fas fa-percent",
                     "url": "/admin/taskhub/referralrewardconfig/",
+                },
+                {
+                    "name": "会员等级活动配置",
+                    "icon": "fas fa-crown",
+                    "url": "/admin/taskhub/membershiplevelconfig/",
+                },
+                {
+                    "name": "团队长扶持阶梯",
+                    "icon": "fas fa-people-group",
+                    "url": "/admin/taskhub/teamleadertier/",
                 },
                 {
                     "name": "邀请成就配置",
