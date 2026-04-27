@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -59,6 +60,15 @@ _PLATFORM_ORDER = (
 )
 
 _PLATFORM_LABELS = dict(Task.BINDING_PLATFORM_CHOICES)
+logger = logging.getLogger(__name__)
+
+_RECHARGE_CONFIG_FIELDS = (
+    ("token_contract_address", "USDT 合约地址"),
+    ("rpc_endpoint", "RPC / API 地址"),
+    ("master_mnemonic", "HD 主助记词"),
+    ("collector_address", "归集地址"),
+    ("collector_private_key", "归集/手续费私钥"),
+)
 
 
 def _is_th_transaction(tx: Transaction) -> bool:
@@ -197,10 +207,29 @@ def _withdraw_fee_quote(user: FrontendUser, gross: Decimal | None = None) -> dic
     }
 
 
+def _recharge_network_config_error(network: RechargeNetworkConfig, *, generation_failed: bool = False) -> str | None:
+    missing = [label for field, label in _RECHARGE_CONFIG_FIELDS if not str(getattr(network, field, "") or "").strip()]
+    if missing:
+        return (
+            f"{network.display_name} 尚未完成自动充值配置，缺少：{', '.join(missing)}。"
+            " 请到后台“资金结算 -> 充值网络配置”补齐后再使用。"
+        )
+    if generation_failed:
+        return (
+            f"{network.display_name} 的专属充值地址生成失败，请检查助记词、RPC、归集地址和私钥配置是否有效。"
+        )
+    return None
+
+
 def _serialize_recharge_network(network: RechargeNetworkConfig, user: FrontendUser | None = None) -> dict:
     address_row = None
+    config_error = _recharge_network_config_error(network)
     if user is not None and network.is_auto_ready:
-        address_row = ensure_user_recharge_address(user, network)
+        try:
+            address_row = ensure_user_recharge_address(user, network)
+        except Exception:
+            logger.exception("Failed to ensure recharge address for user=%s network=%s", getattr(user, "id", None), network.pk)
+            config_error = _recharge_network_config_error(network, generation_failed=True)
     return {
         "id": network.id,
         "chain": network.chain,
@@ -214,6 +243,7 @@ def _serialize_recharge_network(network: RechargeNetworkConfig, user: FrontendUs
         "auto_credit": True,
         "auto_sweep": bool(network.sweep_enabled),
         "native_symbol": network.native_symbol,
+        "config_error": config_error,
     }
 
 

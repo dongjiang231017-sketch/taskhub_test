@@ -302,6 +302,37 @@ class RechargeAndMembershipTests(TestCase):
         self.assertTrue(target["is_configured"])
         self.assertTrue(UserRechargeAddress.objects.filter(user=user, network__chain="ERC20").exists())
 
+    def test_get_recharges_handles_invalid_auto_config_gracefully(self):
+        user = FrontendUser.objects.create(username="recharge_bad_cfg_user", phone="13800000044", password="pass123456")
+        token = ApiToken.issue_for_user(user)
+        RechargeNetworkConfig.objects.update_or_create(
+            chain=RechargeNetworkConfig.CHAIN_TRC20,
+            defaults={
+                "display_name": "USDT-TRC20",
+                "token_contract_address": "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+                "rpc_endpoint": "https://api.trongrid.io",
+                "master_mnemonic": "not a valid mnemonic at all",
+                "collector_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+                "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
+                "min_amount_usdt": Decimal("5.00"),
+                "confirmations_required": 20,
+                "is_active": True,
+            },
+        )
+
+        response = self.client.get(
+            reverse("taskhub-me-recharges"),
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["data"]
+        target = next(row for row in payload["networks"] if row["chain"] == RechargeNetworkConfig.CHAIN_TRC20)
+        self.assertEqual(target["deposit_address"], "")
+        self.assertFalse(target["is_configured"])
+        self.assertIn("生成失败", target["config_error"])
+        self.assertFalse(UserRechargeAddress.objects.filter(user=user, network__chain="TRC20").exists())
+
     @patch("wallets.auto_recharge.EvmUsdtClient")
     def test_sync_network_recharges_detects_and_credits_confirmed_transfer(self, mock_client_cls):
         user = FrontendUser.objects.create(username="recharge_sync_user", phone="13800000043", password="pass123456")
