@@ -1,6 +1,8 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import RechargeNetworkConfig, RechargeRequest, Transaction, UserRechargeAddress, WithdrawalRequest
+from .recharge_diagnostics import diagnose_recharge_network
 
 
 @admin.register(RechargeNetworkConfig)
@@ -56,9 +58,9 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
             },
         ),
         ("说明", {"fields": ("instructions",)}),
-        ("系统", {"fields": ("updated_at",)}),
+        ("系统", {"fields": ("updated_at", "validation_summary")}),
     )
-    readonly_fields = ("updated_at", "next_derivation_index")
+    readonly_fields = ("updated_at", "next_derivation_index", "validation_summary")
 
     @admin.display(description="归集地址")
     def collector_address_short(self, obj):
@@ -81,6 +83,15 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
     @admin.display(description="自动充值就绪", boolean=True)
     def is_auto_ready_flag(self, obj):
         return obj.is_auto_ready
+
+    @admin.display(description="配置诊断")
+    def validation_summary(self, obj):
+        result = diagnose_recharge_network(obj, live_check=False)
+        rows = []
+        for check in result.checks:
+            icon = "OK" if check.ok else "FAIL"
+            rows.append(f"{icon} {check.label}：{check.detail}")
+        return format_html("<br>".join(rows))
 
 
 @admin.register(UserRechargeAddress)
