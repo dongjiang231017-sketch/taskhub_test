@@ -9,6 +9,9 @@ from .auto_recharge import (
     EvmUsdtClient,
     TronUsdtClient,
     _derive_account,
+    _normalize_mnemonic as _normalize_mnemonic_value,
+    _normalize_private_key_hex as _normalize_private_key_hex_value,
+    _normalize_tron_address as _normalize_tron_address_value,
     _tron_base58_from_private_key,
     _tron_base58_to_hex,
 )
@@ -32,7 +35,7 @@ class RechargeDiagnosticResult:
 
 
 def _normalize_tron_address(address: str) -> str:
-    return (address or "").strip()
+    return _normalize_tron_address_value(address)
 
 
 def _normalize_evm_address(address: str) -> str:
@@ -68,11 +71,12 @@ def _check_token_contract(network: RechargeNetworkConfig) -> RechargeDiagnosticC
                 raise ValueError("invalid evm address")
         return RechargeDiagnosticCheck("USDT 合约", True, "格式有效")
     except Exception as exc:  # pragma: no cover - defensive diagnostics
-        return RechargeDiagnosticCheck("USDT 合约", False, f"格式无效：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("USDT 合约", False, f"格式无效：{exc}")
 
 
 def _check_mnemonic(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
-    if not (network.master_mnemonic or "").strip():
+    normalized = _normalize_mnemonic_value(network.master_mnemonic)
+    if not normalized:
         return RechargeDiagnosticCheck("助记词派生", False, "未填写")
     try:
         material = _derive_account(network, int(network.next_derivation_index or 0))
@@ -82,22 +86,22 @@ def _check_mnemonic(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
             raise ValueError("derived evm address malformed")
         return RechargeDiagnosticCheck("助记词派生", True, f"可正常派生地址（序号 {material.derivation_index}）")
     except Exception as exc:
-        return RechargeDiagnosticCheck("助记词派生", False, f"派生失败：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("助记词派生", False, f"派生失败：{exc}")
 
 
 def _check_collector_private_key(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
-    value = (network.collector_private_key or "").strip()
+    value = _normalize_private_key_hex_value(network.collector_private_key)
     if not value:
         return RechargeDiagnosticCheck("归集私钥", False, "未填写")
     try:
         Account.from_key(value)
         return RechargeDiagnosticCheck("归集私钥", True, "格式有效")
     except Exception as exc:
-        return RechargeDiagnosticCheck("归集私钥", False, f"格式无效：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("归集私钥", False, f"格式无效：{exc}")
 
 
 def _check_collector_address(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
-    value = (network.collector_address or "").strip()
+    value = _normalize_tron_address(network.collector_address) if network.is_tron else (network.collector_address or "").strip()
     if not value:
         return RechargeDiagnosticCheck("归集地址", False, "未填写")
     try:
@@ -108,12 +112,12 @@ def _check_collector_address(network: RechargeNetworkConfig) -> RechargeDiagnost
                 raise ValueError("invalid evm address")
         return RechargeDiagnosticCheck("归集地址", True, "格式有效")
     except Exception as exc:
-        return RechargeDiagnosticCheck("归集地址", False, f"格式无效：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("归集地址", False, f"格式无效：{exc}")
 
 
 def _check_collector_match(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
-    address = (network.collector_address or "").strip()
-    private_key = (network.collector_private_key or "").strip()
+    address = _normalize_tron_address(network.collector_address) if network.is_tron else (network.collector_address or "").strip()
+    private_key = _normalize_private_key_hex_value(network.collector_private_key)
     if not address or not private_key:
         return RechargeDiagnosticCheck("地址私钥匹配", False, "归集地址或私钥未填写")
     try:
@@ -128,7 +132,7 @@ def _check_collector_match(network: RechargeNetworkConfig) -> RechargeDiagnostic
             return RechargeDiagnosticCheck("地址私钥匹配", True, "私钥与归集地址一致")
         return RechargeDiagnosticCheck("地址私钥匹配", False, "私钥与归集地址不一致")
     except Exception as exc:
-        return RechargeDiagnosticCheck("地址私钥匹配", False, f"校验失败：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("地址私钥匹配", False, f"校验失败：{exc}")
 
 
 def _check_live_rpc(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
@@ -143,7 +147,7 @@ def _check_live_rpc(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
             return RechargeDiagnosticCheck("RPC 连通", False, "已连接但区块高度异常")
         return RechargeDiagnosticCheck("RPC 连通", True, f"最新区块：{latest_block}")
     except Exception as exc:
-        return RechargeDiagnosticCheck("RPC 连通", False, f"请求失败：{exc.__class__.__name__}")
+        return RechargeDiagnosticCheck("RPC 连通", False, f"请求失败：{exc}")
 
 
 def diagnose_recharge_network(network: RechargeNetworkConfig, *, live_check: bool = False) -> RechargeDiagnosticResult:

@@ -8,7 +8,12 @@ from django.contrib.auth import get_user_model
 
 from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
-from wallets.auto_recharge import DetectedTransfer, ensure_user_recharge_address, sync_network_recharges
+from wallets.auto_recharge import (
+    DetectedTransfer,
+    _tron_base58_from_private_key,
+    ensure_user_recharge_address,
+    sync_network_recharges,
+)
 from wallets.models import RechargeNetworkConfig, RechargeRequest, Transaction, UserRechargeAddress, Wallet
 
 from django.db import DatabaseError
@@ -332,6 +337,37 @@ class RechargeAndMembershipTests(TestCase):
         self.assertFalse(target["is_configured"])
         self.assertIn("生成失败", target["config_error"])
         self.assertFalse(UserRechargeAddress.objects.filter(user=user, network__chain="TRC20").exists())
+
+    def test_get_recharges_accepts_tron_hex_address_and_multiline_private_key(self):
+        user = FrontendUser.objects.create(username="recharge_tron_user", phone="13800000045", password="pass123456")
+        token = ApiToken.issue_for_user(user)
+        _, tron_hex = _tron_base58_from_private_key(self._TEST_COLLECTOR_PRIVATE_KEY)
+        RechargeNetworkConfig.objects.update_or_create(
+            chain=RechargeNetworkConfig.CHAIN_TRC20,
+            defaults={
+                "display_name": "USDT-TRC20",
+                "token_contract_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+                "rpc_endpoint": "https://api.trongrid.io",
+                "master_mnemonic": "test  test\ntest   test test test\ntest test test test test junk",
+                "collector_address": f"  {tron_hex}  ",
+                "collector_private_key": f"  0x{self._TEST_COLLECTOR_PRIVATE_KEY[:32]}\n{self._TEST_COLLECTOR_PRIVATE_KEY[32:]}  ",
+                "min_amount_usdt": Decimal("5.00"),
+                "confirmations_required": 20,
+                "is_active": True,
+            },
+        )
+
+        response = self.client.get(
+            reverse("taskhub-me-recharges"),
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["data"]
+        target = next(row for row in payload["networks"] if row["chain"] == RechargeNetworkConfig.CHAIN_TRC20)
+        self.assertTrue(target["deposit_address"].startswith("T"))
+        self.assertTrue(target["is_configured"])
+        self.assertTrue(UserRechargeAddress.objects.filter(user=user, network__chain="TRC20").exists())
 
     @patch("wallets.auto_recharge.EvmUsdtClient")
     def test_sync_network_recharges_detects_and_credits_confirmed_transfer(self, mock_client_cls):

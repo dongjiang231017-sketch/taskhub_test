@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Iterable
@@ -77,14 +78,44 @@ def _to_token_units(amount: Decimal, decimals: int) -> int:
     return int((Decimal(str(amount)) * scale).quantize(Decimal("1"), rounding=ROUND_DOWN))
 
 
+def _normalize_mnemonic(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _normalize_private_key_hex(value: str) -> str:
+    cleaned = re.sub(r"\s+", "", str(value or "")).strip()
+    if cleaned.lower().startswith("0x"):
+        cleaned = cleaned[2:]
+    return cleaned
+
+
+def _tron_hex_to_base58(address_hex: str) -> str:
+    payload = bytes.fromhex(address_hex)
+    if len(payload) != 21 or payload[0] != 0x41:
+        raise ValueError("invalid tron hex address")
+    checksum = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
+    return base58.b58encode(payload + checksum).decode()
+
+
+def _normalize_tron_address(address: str) -> str:
+    cleaned = re.sub(r"\s+", "", str(address or "")).strip()
+    lowered = cleaned.lower()
+    if lowered.startswith("0x"):
+        cleaned = cleaned[2:]
+    if len(cleaned) == 42 and re.fullmatch(r"[0-9a-fA-F]{42}", cleaned) and cleaned[:2].lower() == "41":
+        return _tron_hex_to_base58(cleaned)
+    return cleaned
+
+
 def _tron_base58_from_private_key(private_key_hex: str) -> tuple[str, str]:
-    key = eth_keys.PrivateKey(bytes.fromhex(private_key_hex))
+    key = eth_keys.PrivateKey(bytes.fromhex(_normalize_private_key_hex(private_key_hex)))
     payload = b"\x41" + keccak(key.public_key.to_bytes())[-20:]
     checksum = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
     return base58.b58encode(payload + checksum).decode(), payload.hex()
 
 
 def _tron_base58_to_hex(address: str) -> str:
+    address = _normalize_tron_address(address)
     raw = base58.b58decode(address)
     if len(raw) != 25:
         raise ValueError("invalid tron address length")
@@ -98,7 +129,7 @@ def _tron_base58_to_hex(address: str) -> str:
 def _derive_account(network: RechargeNetworkConfig, index: int) -> DerivedAccount:
     account_path = network.build_account_path(index)
     acct = Account.from_mnemonic(
-        (network.master_mnemonic or "").strip(),
+        _normalize_mnemonic(network.master_mnemonic),
         passphrase=(network.mnemonic_passphrase or "").strip(),
         account_path=account_path,
     )
@@ -121,7 +152,7 @@ def ensure_user_recharge_address(user: FrontendUser, network: RechargeNetworkCon
     existing = UserRechargeAddress.objects.filter(user=user, network=network).first()
     if existing is not None:
         return existing
-    if not (network.master_mnemonic or "").strip():
+    if not _normalize_mnemonic(network.master_mnemonic):
         return None
     with transaction.atomic():
         network = RechargeNetworkConfig.objects.select_for_update().get(pk=network.pk)
@@ -224,7 +255,7 @@ class EvmUsdtClient:
         return bool(getattr(receipt, "status", receipt.get("status", 0)) == 1)
 
     def send_native_topup(self, *, to_address: str, amount: Decimal) -> str:
-        gas_payer = Account.from_key((self.network.collector_private_key or "").strip())
+        gas_payer = Account.from_key(_normalize_private_key_hex(self.network.collector_private_key))
         gas_price = int(self.w3.eth.gas_price)
         value_wei = int((Decimal(str(amount)) * (Decimal(10) ** 18)).quantize(Decimal("1"), rounding=ROUND_DOWN))
         tx = {
@@ -242,7 +273,7 @@ class EvmUsdtClient:
         balance = self.contract.functions.balanceOf(Web3.to_checksum_address(from_address)).call()
         if int(balance) <= 0:
             raise ValueError("no token balance")
-        sender = Account.from_key(from_private_key)
+        sender = Account.from_key(_normalize_private_key_hex(from_private_key))
         gas_price = int(self.w3.eth.gas_price)
         tx = self.contract.functions.transfer(
             Web3.to_checksum_address((self.network.collector_address or "").strip()),
@@ -346,7 +377,7 @@ class TronUsdtClient:
         return str(tx.get("txID") or data.get("txid") or "")
 
     def send_native_topup(self, *, to_address: str, amount: Decimal) -> str:
-        owner = Account.from_key((self.network.collector_private_key or "").strip())
+        owner = Account.from_key(_normalize_private_key_hex(self.network.collector_private_key))
         owner_address, owner_hex = _tron_base58_from_private_key(owner.key.hex())
         tx = self._post(
             "/wallet/createtransaction",
