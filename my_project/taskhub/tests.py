@@ -22,9 +22,11 @@ from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from taskhub.models import ApiToken, MembershipLevelConfig, ReferralRewardConfig, Task, TaskApplication
+from taskhub.api_views import _twitter_verify_error
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
+from taskhub.twitter_client import TwitterApiError
 from taskhub.tiktok_apify_client import (
     _build_reposts_payload,
     _humanize_apify_tiktok_error,
@@ -132,6 +134,35 @@ class TelegramWebhookStartTests(SimpleTestCase):
         self.assertEqual(mock_send.call_args.args[0], 12345)
         self.assertEqual(mock_send.call_args.kwargs["first_name"], "Ada")
         self.assertEqual(mock_send.call_args.kwargs["preferred_language"], "zh-CN")
+
+
+class TwitterVerificationErrorTests(SimpleTestCase):
+    def test_credit_depleted_error_is_actionable(self):
+        ok, code, message, status = _twitter_verify_error(
+            TwitterApiError(
+                402,
+                '{"title":"CreditsDepleted","detail":"Your enrolled account does not have any credits"}',
+            ),
+            action_label="转发",
+            error_code=4320,
+        )
+
+        self.assertFalse(ok)
+        self.assertEqual(code, 4320)
+        self.assertEqual(status, 503)
+        self.assertIn("额度已耗尽", message)
+
+    def test_rate_limit_error_is_actionable(self):
+        ok, code, message, status = _twitter_verify_error(
+            TwitterApiError(429, '{"title":"Too Many Requests"}'),
+            action_label="关注",
+            error_code=4314,
+        )
+
+        self.assertFalse(ok)
+        self.assertEqual(code, 4314)
+        self.assertEqual(status, 429)
+        self.assertIn("过于频繁", message)
 
 
 class ReferralRewardTests(TestCase):
@@ -282,6 +313,18 @@ class RechargeAndMembershipTests(TestCase):
     def test_evm_transfer_topic_is_0x_prefixed(self):
         self.assertTrue(_EVM_TRANSFER_TOPIC.startswith("0x"))
 
+    def test_recharge_network_prefers_explicit_sweep_destination_address(self):
+        network = RechargeNetworkConfig(
+            chain=RechargeNetworkConfig.CHAIN_ERC20,
+            collector_address="0x0000000000000000000000000000000000001000",
+            sweep_destination_address="0x0000000000000000000000000000000000002000",
+        )
+
+        self.assertEqual(
+            network.effective_sweep_destination_address,
+            "0x0000000000000000000000000000000000002000",
+        )
+
     def test_get_recharges_returns_dedicated_address(self):
         user = FrontendUser.objects.create(username="recharge_api_user", phone="13800000041", password="pass123456")
         token = ApiToken.issue_for_user(user)
@@ -293,6 +336,7 @@ class RechargeAndMembershipTests(TestCase):
                 "rpc_endpoint": "https://eth.llamarpc.com",
                 "master_mnemonic": self._TEST_MNEMONIC,
                 "collector_address": "0x0000000000000000000000000000000000001000",
+                "sweep_destination_address": "0x0000000000000000000000000000000000001000",
                 "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
                 "min_amount_usdt": Decimal("5.00"),
                 "confirmations_required": 6,
@@ -323,6 +367,7 @@ class RechargeAndMembershipTests(TestCase):
                 "rpc_endpoint": "https://api.trongrid.io",
                 "master_mnemonic": "not a valid mnemonic at all",
                 "collector_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+                "sweep_destination_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
                 "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
                 "min_amount_usdt": Decimal("5.00"),
                 "confirmations_required": 20,
@@ -355,6 +400,7 @@ class RechargeAndMembershipTests(TestCase):
                 "rpc_endpoint": "https://api.trongrid.io",
                 "master_mnemonic": "test  test\ntest   test test test\ntest test test test test junk",
                 "collector_address": f"  {tron_hex}  ",
+                "sweep_destination_address": f"  {tron_hex}  ",
                 "collector_private_key": f"  0x{self._TEST_COLLECTOR_PRIVATE_KEY[:32]}\n{self._TEST_COLLECTOR_PRIVATE_KEY[32:]}  ",
                 "min_amount_usdt": Decimal("5.00"),
                 "confirmations_required": 20,
@@ -385,6 +431,7 @@ class RechargeAndMembershipTests(TestCase):
                 "rpc_endpoint": "https://eth.llamarpc.com",
                 "master_mnemonic": self._TEST_MNEMONIC,
                 "collector_address": "0x0000000000000000000000000000000000001000",
+                "sweep_destination_address": "0x0000000000000000000000000000000000001000",
                 "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
                 "min_amount_usdt": Decimal("1.00"),
                 "confirmations_required": 2,
@@ -429,6 +476,7 @@ class RechargeAndMembershipTests(TestCase):
                 "rpc_endpoint": "https://eth.llamarpc.com",
                 "master_mnemonic": self._TEST_MNEMONIC,
                 "collector_address": "0x0000000000000000000000000000000000001000",
+                "sweep_destination_address": "0x0000000000000000000000000000000000001000",
                 "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
                 "min_amount_usdt": Decimal("1.00"),
                 "confirmations_required": 2,

@@ -29,6 +29,7 @@ from .task_lifecycle import (
 from .task_rewards import grant_task_completion_reward
 from .binding_usernames import account_binding_requires_bound_username, normalize_bound_username_for_task
 from .twitter_client import (
+    TwitterApiError,
     extract_tweet_id_from_url,
     extract_username_from_profile_url,
     normalize_twitter_username,
@@ -361,8 +362,8 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
             return False, 4313, "Twitter 关注任务缺少目标账号配置，请联系管理员处理。", 400
         try:
             ok = user_follows_username(bearer, bound_username, target)
-        except ValueError:
-            return False, 4314, "暂时无法完成 Twitter 关注校验，请稍后再试。", 502
+        except ValueError as exc:
+            return _twitter_verify_error(exc, action_label="关注", error_code=4314)
         if not ok:
             return False, 4315, "并未检测到关注，请先完成关注后再试。", 400
         return True, 0, "", 200
@@ -378,8 +379,8 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
             return False, 4319, "Twitter 转发任务缺少目标推文配置，请联系管理员处理。", 400
         try:
             ok = user_retweeted_tweet(bearer, tweet_id, bound_username)
-        except ValueError:
-            return False, 4320, "暂时无法完成 Twitter 转发校验，请稍后再试。", 502
+        except ValueError as exc:
+            return _twitter_verify_error(exc, action_label="转发", error_code=4320)
         if not ok:
             return False, 4321, "并未检测到转发，请先完成转发后再试。", 400
         return True, 0, "", 200
@@ -395,13 +396,30 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
             return False, 4316, "Twitter 点赞任务缺少目标推文配置，请联系管理员处理。", 400
         try:
             ok = user_liked_tweet(bearer, tweet_id, bound_username)
-        except ValueError:
-            return False, 4317, "暂时无法完成 Twitter 点赞校验，请稍后再试。", 502
+        except ValueError as exc:
+            return _twitter_verify_error(exc, action_label="点赞", error_code=4317)
         if not ok:
             return False, 4318, "并未检测到点赞，请先完成点赞后再试。", 400
         return True, 0, "", 200
 
     return True, 0, "", 200
+
+
+def _twitter_verify_error(exc: ValueError, *, action_label: str, error_code: int) -> tuple[bool, int, str, int]:
+    if isinstance(exc, TwitterApiError):
+        body_lower = exc.body.lower()
+        if exc.status_code == 402 or "creditsdepleted" in body_lower or "credit" in body_lower:
+            return (
+                False,
+                error_code,
+                f"Twitter {action_label}校验额度已耗尽，请联系管理员补充 X API Credits 后重试。",
+                503,
+            )
+        if exc.status_code in {401, 403}:
+            return False, error_code, f"Twitter {action_label}校验权限不足，请联系管理员检查 API 权限配置。", 503
+        if exc.status_code == 429:
+            return False, error_code, f"Twitter {action_label}校验过于频繁，请稍后再试。", 429
+    return False, error_code, f"暂时无法完成 Twitter {action_label}校验，请稍后再试。", 502
 
 
 def _verify_tiktok_social_action(task: Task, bound_username: str) -> tuple[bool, int, str, int]:

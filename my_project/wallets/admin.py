@@ -13,6 +13,7 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
         "chain",
         "display_name",
         "collector_address_short",
+        "sweep_destination_address_short",
         "token_contract_address_short",
         "min_amount_usdt",
         "confirmations_required",
@@ -21,7 +22,13 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
         "updated_at",
     )
     list_filter = ("is_active", "chain")
-    search_fields = ("chain", "display_name", "collector_address", "token_contract_address")
+    search_fields = (
+        "chain",
+        "display_name",
+        "collector_address",
+        "sweep_destination_address",
+        "token_contract_address",
+    )
     ordering = ("sort_order", "id")
     fieldsets = (
         ("网络", {"fields": ("sort_order", "chain", "display_name", "is_active")}),
@@ -48,6 +55,7 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
                     "mnemonic_passphrase",
                     "collector_address",
                     "collector_private_key",
+                    "sweep_destination_address",
                     "next_derivation_index",
                     "sweep_enabled",
                     "min_sweep_amount_usdt",
@@ -62,9 +70,18 @@ class RechargeNetworkConfigAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("updated_at", "next_derivation_index", "validation_summary")
 
-    @admin.display(description="归集地址")
+    @admin.display(description="手续费钱包")
     def collector_address_short(self, obj):
         s = obj.collector_address or ""
+        if not s:
+            return "未配置"
+        if len(s) <= 24:
+            return s
+        return f"{s[:12]}…{s[-10:]}"
+
+    @admin.display(description="归集目标")
+    def sweep_destination_address_short(self, obj):
+        s = obj.effective_sweep_destination_address or ""
         if not s:
             return "未配置"
         if len(s) <= 24:

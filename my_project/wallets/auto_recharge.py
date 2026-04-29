@@ -302,7 +302,7 @@ class EvmUsdtClient:
         sender = Account.from_key(_normalize_private_key_hex(from_private_key))
         gas_price = int(self.w3.eth.gas_price)
         tx = self.contract.functions.transfer(
-            Web3.to_checksum_address((self.network.collector_address or "").strip()),
+            Web3.to_checksum_address((self.network.effective_sweep_destination_address or "").strip()),
             int(balance),
         ).build_transaction(
             {
@@ -419,7 +419,7 @@ class TronUsdtClient:
     def send_token_sweep(self, *, from_private_key: str, from_address: str) -> str:
         owner_hex = _tron_base58_to_hex(from_address)
         contract_hex = _tron_base58_to_hex((self.network.token_contract_address or "").strip())
-        collector_hex = _tron_base58_to_hex((self.network.collector_address or "").strip())
+        collector_hex = _tron_base58_to_hex((self.network.effective_sweep_destination_address or "").strip())
         balance = self.token_balance(from_address)
         raw_balance = _to_token_units(balance, self.network.token_decimals)
         if raw_balance <= 0:

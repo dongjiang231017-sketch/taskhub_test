@@ -264,14 +264,21 @@ class RechargeNetworkConfig(models.Model):
         max_length=160,
         blank=True,
         default="",
-        verbose_name="归集地址",
-        db_comment="链上充值自动归集到的总地址",
+        verbose_name="手续费钱包地址",
+        db_comment="用于给用户充值地址补 Gas / TRX 的热钱包地址；需与下方私钥匹配",
     )
     collector_private_key = models.TextField(
         blank=True,
         default="",
-        verbose_name="归集/手续费私钥",
-        db_comment="用于给充值地址补 Gas 及归集 USDT；建议仅管理员可见",
+        verbose_name="手续费钱包私钥",
+        db_comment="仅用于给充值地址补 Gas / TRX 的热钱包私钥；建议仅管理员可见",
+    )
+    sweep_destination_address = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        verbose_name="归集目标地址",
+        db_comment="用户充值地址里的 USDT 最终归集到的目标地址；无需在系统内保存该地址私钥",
     )
     min_amount_usdt = models.DecimalField(
         max_digits=20,
@@ -353,8 +360,16 @@ class RechargeNetworkConfig(models.Model):
             (self.master_mnemonic or "").strip(),
             (self.collector_address or "").strip(),
             (self.collector_private_key or "").strip(),
+            self.effective_sweep_destination_address,
         ]
         return all(required)
+
+    @property
+    def effective_sweep_destination_address(self) -> str:
+        explicit = str(self.sweep_destination_address or "").strip()
+        if explicit:
+            return explicit
+        return str(self.collector_address or "").strip()
 
     def build_account_path(self, index: int) -> str:
         coin_type = "195" if self.is_tron else "60"

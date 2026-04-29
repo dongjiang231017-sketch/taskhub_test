@@ -66,8 +66,9 @@ _RECHARGE_CONFIG_FIELDS = (
     ("token_contract_address", "USDT 合约地址"),
     ("rpc_endpoint", "RPC / API 地址"),
     ("master_mnemonic", "HD 主助记词"),
-    ("collector_address", "归集地址"),
-    ("collector_private_key", "归集/手续费私钥"),
+    ("collector_address", "手续费钱包地址"),
+    ("collector_private_key", "手续费钱包私钥"),
+    ("sweep_destination_address", "归集目标地址"),
 )
 
 
@@ -216,7 +217,7 @@ def _recharge_network_config_error(network: RechargeNetworkConfig, *, generation
         )
     if generation_failed:
         return (
-            f"{network.display_name} 的专属充值地址生成失败，请检查助记词、RPC、归集地址和私钥配置是否有效。"
+            f"{network.display_name} 的专属充值地址生成失败，请检查助记词、RPC、手续费钱包和归集目标地址配置是否有效。"
         )
     return None
 

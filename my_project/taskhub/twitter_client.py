@@ -12,6 +12,13 @@ import urllib.request
 TWITTER_API = "https://api.twitter.com/2"
 
 
+class TwitterApiError(ValueError):
+    def __init__(self, status_code: int, body: str):
+        self.status_code = int(status_code)
+        self.body = str(body or "")
+        super().__init__(f"Twitter API HTTP {self.status_code}: {self.body[:500]}")
+
+
 def normalize_twitter_username(raw: str | None) -> str:
     if not raw:
         return ""
@@ -57,7 +64,7 @@ def _twitter_get(bearer: str, path: str, params: dict | None = None) -> dict:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Twitter API HTTP {e.code}: {body[:500]}") from e
+        raise TwitterApiError(e.code, body) from e
 
 
 def lookup_user_id_by_username(bearer: str, username: str) -> str | None:

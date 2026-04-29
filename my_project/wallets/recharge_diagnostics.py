@@ -50,8 +50,9 @@ def _check_required_fields(network: RechargeNetworkConfig) -> RechargeDiagnostic
         ("token_contract_address", "USDT 合约地址"),
         ("rpc_endpoint", "RPC / API 地址"),
         ("master_mnemonic", "HD 主助记词"),
-        ("collector_address", "归集地址"),
-        ("collector_private_key", "归集/手续费私钥"),
+        ("collector_address", "手续费钱包地址"),
+        ("collector_private_key", "手续费钱包私钥"),
+        ("sweep_destination_address", "归集目标地址"),
     )
     missing = [label for field, label in required if not str(getattr(network, field, "") or "").strip()]
     if missing:
@@ -92,34 +93,53 @@ def _check_mnemonic(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
 def _check_collector_private_key(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
     value = _normalize_private_key_hex_value(network.collector_private_key)
     if not value:
-        return RechargeDiagnosticCheck("归集私钥", False, "未填写")
+        return RechargeDiagnosticCheck("手续费钱包私钥", False, "未填写")
     try:
         Account.from_key(value)
-        return RechargeDiagnosticCheck("归集私钥", True, "格式有效")
+        return RechargeDiagnosticCheck("手续费钱包私钥", True, "格式有效")
     except Exception as exc:
-        return RechargeDiagnosticCheck("归集私钥", False, f"格式无效：{exc}")
+        return RechargeDiagnosticCheck("手续费钱包私钥", False, f"格式无效：{exc}")
 
 
 def _check_collector_address(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
     value = _normalize_tron_address(network.collector_address) if network.is_tron else (network.collector_address or "").strip()
     if not value:
-        return RechargeDiagnosticCheck("归集地址", False, "未填写")
+        return RechargeDiagnosticCheck("手续费钱包地址", False, "未填写")
     try:
         if network.is_tron:
             _tron_base58_to_hex(value)
         else:
             if not Web3.is_address(value):
                 raise ValueError("invalid evm address")
-        return RechargeDiagnosticCheck("归集地址", True, "格式有效")
+        return RechargeDiagnosticCheck("手续费钱包地址", True, "格式有效")
     except Exception as exc:
-        return RechargeDiagnosticCheck("归集地址", False, f"格式无效：{exc}")
+        return RechargeDiagnosticCheck("手续费钱包地址", False, f"格式无效：{exc}")
+
+
+def _check_sweep_destination_address(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
+    value = (
+        _normalize_tron_address(network.effective_sweep_destination_address)
+        if network.is_tron
+        else (network.effective_sweep_destination_address or "").strip()
+    )
+    if not value:
+        return RechargeDiagnosticCheck("归集目标地址", False, "未填写")
+    try:
+        if network.is_tron:
+            _tron_base58_to_hex(value)
+        else:
+            if not Web3.is_address(value):
+                raise ValueError("invalid evm address")
+        return RechargeDiagnosticCheck("归集目标地址", True, "格式有效")
+    except Exception as exc:
+        return RechargeDiagnosticCheck("归集目标地址", False, f"格式无效：{exc}")
 
 
 def _check_collector_match(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
     address = _normalize_tron_address(network.collector_address) if network.is_tron else (network.collector_address or "").strip()
     private_key = _normalize_private_key_hex_value(network.collector_private_key)
     if not address or not private_key:
-        return RechargeDiagnosticCheck("地址私钥匹配", False, "归集地址或私钥未填写")
+        return RechargeDiagnosticCheck("地址私钥匹配", False, "手续费钱包地址或私钥未填写")
     try:
         owner = Account.from_key(private_key)
         if network.is_tron:
@@ -171,6 +191,7 @@ def diagnose_recharge_network(network: RechargeNetworkConfig, *, live_check: boo
         _check_mnemonic(network),
         _check_collector_address(network),
         _check_collector_private_key(network),
+        _check_sweep_destination_address(network),
         _check_collector_match(network),
     ]
     if live_check:
