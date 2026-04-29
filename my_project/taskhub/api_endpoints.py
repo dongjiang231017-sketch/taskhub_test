@@ -288,7 +288,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("POST",),
         "me/applications/<int:application_id>/verify-social-action/",
-        "关注 / 点赞 / 评论类任务：用户完成站外动作后手动确认完成并自动录用",
+        "关注 / 转发 / 点赞 / 评论类任务：用户完成站外动作后手动确认；Twitter/TikTok 转发会自动校验",
         True,
     ),
     PublicEndpoint(

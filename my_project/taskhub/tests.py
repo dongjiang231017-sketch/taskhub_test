@@ -604,6 +604,95 @@ class SocialActionTaskTests(TestCase):
         self.assertEqual(response.json()["code"], 4315)
         mock_follows.assert_called_once_with("twitter-bearer", "social_user_x", "taskhub_official")
 
+    @patch("taskhub.api_views.user_retweeted_tweet")
+    @patch("taskhub.api_views.get_twitter_bearer_token")
+    def test_twitter_repost_task_verifies_against_bound_account(self, mock_bearer, mock_retweeted):
+        publisher, applicant, token = self._create_user_pair()
+        self._bind_platform_account(
+            publisher=publisher,
+            applicant=applicant,
+            platform=Task.BINDING_TWITTER,
+            username="social_user_x",
+        )
+        mock_bearer.return_value = "twitter-bearer"
+        mock_retweeted.return_value = True
+        task = Task.objects.create(
+            publisher=publisher,
+            title="转发 Twitter",
+            description="转发指定推文",
+            interaction_type=Task.INTERACTION_REPOST,
+            binding_platform=Task.BINDING_TWITTER,
+            interaction_config={"target_tweet_url": "https://x.com/taskhub_official/status/1234567890"},
+            reward_usdt=Decimal("0.60"),
+            reward_th_coin=Decimal("1.20"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        application.refresh_from_db()
+        self.assertEqual(application.status, TaskApplication.STATUS_ACCEPTED)
+        mock_retweeted.assert_called_once_with("twitter-bearer", "1234567890", "social_user_x")
+
+    @patch("taskhub.api_views.user_reposted_video_via_apify")
+    @patch("taskhub.api_views.apify_tiktok_configured")
+    def test_tiktok_repost_task_verifies_against_bound_account(self, mock_configured, mock_reposted):
+        publisher, applicant, token = self._create_user_pair()
+        self._bind_platform_account(
+            publisher=publisher,
+            applicant=applicant,
+            platform=Task.BINDING_TIKTOK,
+            username="social_user_tt",
+        )
+        mock_configured.return_value = True
+        mock_reposted.return_value = (True, None)
+        task = Task.objects.create(
+            publisher=publisher,
+            title="转发 TikTok",
+            description="转发指定视频",
+            interaction_type=Task.INTERACTION_REPOST,
+            binding_platform=Task.BINDING_TIKTOK,
+            interaction_config={"target_video_url": "https://www.tiktok.com/@taskhub_official/video/1234567890123456789"},
+            reward_usdt=Decimal("0.60"),
+            reward_th_coin=Decimal("1.20"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        application.refresh_from_db()
+        self.assertEqual(application.status, TaskApplication.STATUS_ACCEPTED)
+        mock_reposted.assert_called_once_with(
+            "social_user_tt",
+            "https://www.tiktok.com/@taskhub_official/video/1234567890123456789",
+        )
+
     def test_social_action_verify_completes_pending_follow_task(self):
         publisher, applicant, token = self._create_user_pair()
         self._bind_platform_account(

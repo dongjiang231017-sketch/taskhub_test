@@ -150,6 +150,20 @@ def _check_live_rpc(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
         return RechargeDiagnosticCheck("RPC 连通", False, f"请求失败：{exc}")
 
 
+def _check_evm_log_scan(network: RechargeNetworkConfig) -> RechargeDiagnosticCheck:
+    if not network.is_evm:
+        return RechargeDiagnosticCheck("日志扫描", True, "当前网络不需要 EVM 日志检查")
+    if not (network.rpc_endpoint or "").strip():
+        return RechargeDiagnosticCheck("日志扫描", False, "未填写 RPC / API 地址")
+    if not (network.token_contract_address or "").strip():
+        return RechargeDiagnosticCheck("日志扫描", False, "未填写 USDT 合约地址")
+    try:
+        latest_block = EvmUsdtClient(network).probe_log_scanning()
+        return RechargeDiagnosticCheck("日志扫描", True, f"eth_getLogs 可用（测试区块：{latest_block}）")
+    except Exception as exc:
+        return RechargeDiagnosticCheck("日志扫描", False, f"eth_getLogs 不可用：{exc}")
+
+
 def diagnose_recharge_network(network: RechargeNetworkConfig, *, live_check: bool = False) -> RechargeDiagnosticResult:
     checks = [
         _check_required_fields(network),
@@ -161,4 +175,5 @@ def diagnose_recharge_network(network: RechargeNetworkConfig, *, live_check: boo
     ]
     if live_check:
         checks.append(_check_live_rpc(network))
+        checks.append(_check_evm_log_scan(network))
     return RechargeDiagnosticResult(checks=checks)

@@ -199,6 +199,7 @@ def binding_reference_url(task: Task) -> str | None:
         return s or None
     if task.interaction_type in {
         Task.INTERACTION_FOLLOW,
+        Task.INTERACTION_REPOST,
         Task.INTERACTION_LIKE,
         Task.INTERACTION_COMMENT,
         Task.INTERACTION_WATCH_VIDEO,
@@ -279,6 +280,7 @@ def _interaction_supports_explicit_self_verify(task: Task) -> bool:
         task.verification_mode == Task.VERIFY_USER_SELF
         and task.interaction_type in {
             Task.INTERACTION_FOLLOW,
+            Task.INTERACTION_REPOST,
             Task.INTERACTION_LIKE,
             Task.INTERACTION_COMMENT,
         }
@@ -322,6 +324,7 @@ def _accepted_platform_binding_application(user: FrontendUser, platform: str) ->
 def _social_action_binding_error(task: Task, user: FrontendUser) -> tuple[int, str] | None:
     if task.interaction_type not in {
         Task.INTERACTION_FOLLOW,
+        Task.INTERACTION_REPOST,
         Task.INTERACTION_LIKE,
         Task.INTERACTION_COMMENT,
     }:
@@ -364,6 +367,23 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
             return False, 4315, "并未检测到关注，请先完成关注后再试。", 400
         return True, 0, "", 200
 
+    if task.interaction_type == Task.INTERACTION_REPOST:
+        tweet_url = (
+            (cfg.get("target_tweet_url") or "")
+            or (cfg.get("target_post_url") or "")
+            or (cfg.get("target_repost_url") or "")
+        ).strip()
+        tweet_id = extract_tweet_id_from_url(tweet_url)
+        if not tweet_id:
+            return False, 4319, "Twitter 转发任务缺少目标推文配置，请联系管理员处理。", 400
+        try:
+            ok = user_retweeted_tweet(bearer, tweet_id, bound_username)
+        except ValueError:
+            return False, 4320, "暂时无法完成 Twitter 转发校验，请稍后再试。", 502
+        if not ok:
+            return False, 4321, "并未检测到转发，请先完成转发后再试。", 400
+        return True, 0, "", 200
+
     if task.interaction_type == Task.INTERACTION_LIKE:
         tweet_url = (
             (cfg.get("target_like_url") or "")
@@ -382,6 +402,26 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
         return True, 0, "", 200
 
     return True, 0, "", 200
+
+
+def _verify_tiktok_social_action(task: Task, bound_username: str) -> tuple[bool, int, str, int]:
+    if task.interaction_type != Task.INTERACTION_REPOST:
+        return True, 0, "", 200
+    cfg = task.interaction_config or {}
+    video_url = (
+        (cfg.get("target_video_url") or "")
+        or (cfg.get("tiktok_video_url") or "")
+        or (cfg.get("target_repost_url") or "")
+    ).strip()
+    if not extract_tiktok_video_id_from_url(video_url):
+        return False, 4322, "TikTok 转发任务缺少目标视频配置，请联系管理员处理。", 400
+    if not apify_tiktok_configured():
+        return False, 4323, "TikTok 转发校验服务暂不可用，请稍后再试。", 503
+    ok, err = user_reposted_video_via_apify(bound_username, video_url)
+    if ok:
+        return True, 0, "", 200
+    status = 503 if apify_tiktok_error_is_service_side(err) else 400
+    return False, 4324, err or "并未检测到转发，请确认已完成转发后再试。", status
 
 
 def serialize_task(task, current_user=None, include_contact=False):
@@ -2368,8 +2408,8 @@ def application_tiktok_verify_api(request, application_id):
 @require_http_methods(["POST"])
 def application_social_action_verify_api(request, application_id):
     """
-    关注 / 点赞 / 评论类任务：用户完成站外动作后显式点击「我已完成」。
-    当前按用户自确认流转；如需自动校验，可后续按平台扩展到 Twitter API / Apify。
+    关注 / 转发 / 点赞 / 评论类任务：用户完成站外动作后显式点击「我已完成」。
+    Twitter / TikTok 转发会按绑定账号做自动校验；其余平台保留用户自确认流转。
     """
     try:
         application = TaskApplication.objects.select_related("task", "applicant").get(pk=application_id)
@@ -2400,6 +2440,11 @@ def application_social_action_verify_api(request, application_id):
     if task.binding_platform == Task.BINDING_TWITTER:
         bound_username = normalize_twitter_username(bound_app.bound_username if bound_app else "")
         ok, code, msg, status = _verify_twitter_social_action(task, bound_username)
+        if not ok:
+            return api_error(msg, code=code, status=status)
+    if task.binding_platform == Task.BINDING_TIKTOK:
+        bound_username = normalize_bound_username_for_task(task, bound_app.bound_username if bound_app else "")
+        ok, code, msg, status = _verify_tiktok_social_action(task, bound_username)
         if not ok:
             return api_error(msg, code=code, status=status)
 

@@ -50,6 +50,7 @@ class Task(models.Model):
     INTERACTION_NONE = "none"
     INTERACTION_ACCOUNT_BINDING = "account_binding"
     INTERACTION_FOLLOW = "follow"
+    INTERACTION_REPOST = "repost"
     INTERACTION_LIKE = "like"
     INTERACTION_COMMENT = "comment"
     INTERACTION_WATCH_VIDEO = "watch_video"
@@ -61,6 +62,7 @@ class Task(models.Model):
         (INTERACTION_ACCOUNT_BINDING, "账号绑定（首页「绑定 Twitter/TikTok…」卡片）"),
         (INTERACTION_JOIN_COMMUNITY, "加入社群（如 Telegram 入群/频道）"),
         (INTERACTION_FOLLOW, "关注"),
+        (INTERACTION_REPOST, "转发 / Repost / Retweet"),
         (INTERACTION_LIKE, "点赞"),
         (INTERACTION_COMMENT, "评论"),
         (INTERACTION_WATCH_VIDEO, "观看视频"),
@@ -210,11 +212,13 @@ class Task(models.Model):
         if self.interaction_type in {
             self.INTERACTION_ACCOUNT_BINDING,
             self.INTERACTION_FOLLOW,
+            self.INTERACTION_REPOST,
             self.INTERACTION_LIKE,
         } and not self.binding_platform:
             label = {
                 self.INTERACTION_ACCOUNT_BINDING: "账号绑定",
                 self.INTERACTION_FOLLOW: "关注",
+                self.INTERACTION_REPOST: "转发",
                 self.INTERACTION_LIKE: "点赞",
             }.get(self.interaction_type, "当前玩法")
             raise ValidationError({"binding_platform": f"必做类型为「{label}」时必须选择目标平台。"})
@@ -235,6 +239,7 @@ class Task(models.Model):
         elif self.interaction_type not in {
             self.INTERACTION_ACCOUNT_BINDING,
             self.INTERACTION_FOLLOW,
+            self.INTERACTION_REPOST,
             self.INTERACTION_LIKE,
         }:
             self.binding_platform = self.BINDING_PLATFORM_NONE
@@ -262,6 +267,7 @@ class Task(models.Model):
             return self.VERIFY_USER_SELF
         if self.interaction_type in (
             self.INTERACTION_FOLLOW,
+            self.INTERACTION_REPOST,
             self.INTERACTION_LIKE,
             self.INTERACTION_COMMENT,
             self.INTERACTION_JOIN_COMMUNITY,

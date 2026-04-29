@@ -194,6 +194,19 @@ class EvmUsdtClient:
     def latest_block(self) -> int:
         return int(self.w3.eth.block_number)
 
+    def probe_log_scanning(self) -> int:
+        latest = self.latest_block()
+        from_block = max(1, latest - 1)
+        self.w3.eth.get_logs(
+            {
+                "address": Web3.to_checksum_address((self.network.token_contract_address or "").strip()),
+                "fromBlock": int(from_block),
+                "toBlock": int(latest),
+                "topics": [_EVM_TRANSFER_TOPIC],
+            }
+        )
+        return latest
+
     def list_new_transfers(
         self,
         address_rows: Iterable[UserRechargeAddress],

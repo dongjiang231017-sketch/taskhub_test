@@ -132,15 +132,17 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             "<p>下面「交互配置 JSON」须为对象 <code>{{}}</code>。不配就留 <code>{{}}</code>（除「加入社群」外）。</p>"
             "<ul style='margin:8px 0 0 1.1em;line-height:1.65'>"
             "<li><strong>Twitter 绑定</strong>（要用户打开哪条推文、是否必须转发）：<br><code>{}</code></li>"
-            "<li><strong>社交任务：关注 / 点赞</strong>（Twitter / Instagram / TikTok）："
-            "把「必做任务类型」设为<strong>关注</strong>或<strong>点赞</strong>，"
+            "<li><strong>社交任务：关注 / 转发 / 点赞</strong>（Twitter / Instagram / TikTok）："
+            "把「必做任务类型」设为<strong>关注</strong>、<strong>转发</strong>或<strong>点赞</strong>，"
             "再选「目标平台」。前台会先让用户打开目标链接，再点「我已完成」走 "
             "<code>verify-social-action</code>。示例：<br>"
             "Twitter 关注：<code>{}</code><br>"
+            "Twitter 转发：<code>{}</code><br>"
             "Twitter 点赞：<code>{}</code><br>"
             "Instagram 关注：<code>{}</code><br>"
             "Instagram 点赞：<code>{}</code><br>"
             "TikTok 关注：<code>{}</code><br>"
+            "TikTok 转发：<code>{}</code><br>"
             "TikTok 点赞：<code>{}</code></li>"
             "<li><strong>YouTube 等简介留链</strong>（用户简介里必须出现的一段 URL；键名须为 <code>youtube_proof_link</code>，"
             "接口会额外返回 <code>binding_reference_url</code> 供前端「复制链接」）：<br><code>{}</code></li>"
@@ -165,10 +167,12 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             "</ul>",
             '{"target_tweet_url":"https://x.com/账号/status/推文ID","require_retweet":true,"require_follow":false,"target_follow_username":""}',
             '{"target_follow_username":"taskhub_official","target_profile_url":"https://x.com/taskhub_official"}',
+            '{"target_tweet_url":"https://x.com/taskhub_official/status/1234567890"}',
             '{"target_tweet_url":"https://x.com/taskhub_official/status/1234567890","target_like_url":"https://x.com/taskhub_official/status/1234567890"}',
             '{"target_profile_url":"https://www.instagram.com/taskhub_official/"}',
             '{"target_post_url":"https://www.instagram.com/p/ABCDEF12345/"}',
             '{"target_profile_url":"https://www.tiktok.com/@taskhub_official"}',
+            '{"target_video_url":"https://www.tiktok.com/@taskhub_official/video/1234567890123456789"}',
             '{"target_video_url":"https://www.tiktok.com/@taskhub_official/video/1234567890123456789"}',
             '{"youtube_proof_link":"https://你要用户粘贴的完整链接"}',
             '{"instagram_proof_link":"须填完整唯一链接（如 https://t.me/… 或活动落地页）；勿只填 https://www.instagram.com/ 根路径，易误匹配"}',
