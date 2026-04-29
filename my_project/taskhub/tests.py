@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from decimal import Decimal
 
@@ -10,6 +10,7 @@ from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
 from wallets.auto_recharge import (
     DetectedTransfer,
+    EvmUsdtClient,
     _EVM_TRANSFER_TOPIC,
     _tron_base58_from_private_key,
     ensure_user_recharge_address,
@@ -416,6 +417,58 @@ class RechargeAndMembershipTests(TestCase):
         self.assertIsNotNone(req.credited_transaction_id)
         wallet = Wallet.objects.get(user=user)
         self.assertEqual(str(wallet.balance), "12.50")
+
+    @patch("wallets.auto_recharge.EvmUsdtClient")
+    def test_sync_network_recharges_uses_stable_scan_block(self, mock_client_cls):
+        user = FrontendUser.objects.create(username="recharge_sync_safe_user", phone="13800000046", password="pass123456")
+        network, _ = RechargeNetworkConfig.objects.update_or_create(
+            chain=RechargeNetworkConfig.CHAIN_ERC20,
+            defaults={
+                "display_name": "USDT-ERC20",
+                "token_contract_address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "rpc_endpoint": "https://eth.llamarpc.com",
+                "master_mnemonic": self._TEST_MNEMONIC,
+                "collector_address": "0x0000000000000000000000000000000000001000",
+                "collector_private_key": self._TEST_COLLECTOR_PRIVATE_KEY,
+                "min_amount_usdt": Decimal("1.00"),
+                "confirmations_required": 2,
+                "is_active": True,
+            },
+        )
+        ensure_user_recharge_address(user, network)
+
+        mock_client = mock_client_cls.return_value
+        mock_client.latest_block.return_value = 120
+        mock_client.stable_scan_to_block.return_value = 114
+        mock_client.list_new_transfers.return_value = []
+
+        stats = sync_network_recharges(network)
+
+        self.assertEqual(stats["detected"], 0)
+        mock_client.stable_scan_to_block.assert_called_once_with(from_block=0, requested_to_block=120)
+        mock_client.list_new_transfers.assert_called_once()
+        self.assertEqual(mock_client.list_new_transfers.call_args.kwargs["to_block"], 114)
+        network.refresh_from_db()
+        self.assertEqual(network.scan_from_block, 115)
+
+    def test_probe_log_scanning_uses_safe_latest_window(self):
+        client = object.__new__(EvmUsdtClient)
+        client.network = RechargeNetworkConfig(
+            chain=RechargeNetworkConfig.CHAIN_ERC20,
+            token_contract_address="0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        )
+        client.w3 = MagicMock()
+        client.latest_block = MagicMock(return_value=120)
+        client.stable_scan_to_block = MagicMock(return_value=114)
+        client.w3.eth.get_logs.return_value = []
+
+        scanned_to = EvmUsdtClient.probe_log_scanning(client)
+
+        self.assertEqual(scanned_to, 114)
+        client.stable_scan_to_block.assert_called_once_with(from_block=119, requested_to_block=120)
+        kwargs = client.w3.eth.get_logs.call_args.args[0]
+        self.assertEqual(kwargs["fromBlock"], 113)
+        self.assertEqual(kwargs["toBlock"], 114)
 
     def test_user_can_purchase_membership_with_wallet_balance(self):
         user = FrontendUser.objects.create(

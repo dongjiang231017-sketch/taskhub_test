@@ -194,18 +194,31 @@ class EvmUsdtClient:
     def latest_block(self) -> int:
         return int(self.w3.eth.block_number)
 
+    def stable_scan_to_block(self, *, from_block: int, requested_to_block: int, safety_margin: int = 6) -> int:
+        """
+        Public RPCs behind load balancers may return a slightly newer head for
+        blockNumber than the backend that later serves eth_getLogs. Stay a few
+        blocks behind to avoid "beyond current head block" false negatives.
+        """
+        latest_visible = self.latest_block()
+        safe_to = min(int(requested_to_block), max(0, int(latest_visible) - max(0, int(safety_margin))))
+        if safe_to < int(from_block):
+            return int(from_block)
+        return int(safe_to)
+
     def probe_log_scanning(self) -> int:
         latest = self.latest_block()
-        from_block = max(1, latest - 1)
+        to_block = self.stable_scan_to_block(from_block=max(1, latest - 1), requested_to_block=latest)
+        from_block = max(1, to_block - 1)
         self.w3.eth.get_logs(
             {
                 "address": Web3.to_checksum_address((self.network.token_contract_address or "").strip()),
                 "fromBlock": int(from_block),
-                "toBlock": int(latest),
+                "toBlock": int(to_block),
                 "topics": [_EVM_TRANSFER_TOPIC],
             }
         )
-        return latest
+        return to_block
 
     def list_new_transfers(
         self,
@@ -526,8 +539,9 @@ def sync_network_recharges(network: RechargeNetworkConfig) -> dict[str, int]:
         start_block = network.scan_from_block
         if start_block is None:
             start_block = max(0, latest_block - 3000)
-        if int(start_block) <= latest_block:
-            for item in client.list_new_transfers(addresses, from_block=int(start_block), to_block=latest_block):
+        scan_to_block = client.stable_scan_to_block(from_block=int(start_block), requested_to_block=latest_block)
+        if int(start_block) <= int(scan_to_block):
+            for item in client.list_new_transfers(addresses, from_block=int(start_block), to_block=int(scan_to_block)):
                 address_row = next((row for row in addresses if row.address == item.to_address), None)
                 if address_row is None:
                     continue
@@ -535,7 +549,7 @@ def sync_network_recharges(network: RechargeNetworkConfig) -> dict[str, int]:
                 detected += 1
                 if _credit_if_confirmed(network, req, latest_block=latest_block):
                     credited += 1
-            network.scan_from_block = latest_block + 1
+            network.scan_from_block = int(scan_to_block) + 1
             network.save(update_fields=["scan_from_block", "updated_at"])
     else:
         client = TronUsdtClient(network)
