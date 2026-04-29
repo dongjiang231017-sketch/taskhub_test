@@ -24,7 +24,7 @@ def _membership_payload(level: MembershipLevelConfig) -> dict:
     if level.unlimited_tasks or limit is None:
         limit_label = "不限"
     else:
-        limit_label = f"{limit} 笔/天"
+        limit_label = f"{limit} 次/天"
     return {
         "id": level.id,
         "level": level.level,
@@ -86,14 +86,14 @@ def build_invite_activity_rules_payload(user=None) -> dict:
                 "level_1_rate_label": _pct(rates["recharge_direct_rate"]),
                 "level_2_rate": str(rates["recharge_second_rate"]),
                 "level_2_rate_label": _pct(rates["recharge_second_rate"]),
-                "description": "A 邀请 B 充值，A 获得一级佣金；B 邀请 C 充值，A 获得二级佣金。",
+                "description": "下级每成功充值 1 笔后，一级上级可获得充值金额对应比例佣金，二级上级可继续获得二级充值佣金。",
             },
             "task": {
                 "level_1_rate": str(rates["task_direct_rate"]),
                 "level_1_rate_label": _pct(rates["task_direct_rate"]),
                 "level_2_rate": str(rates["task_second_rate"]),
                 "level_2_rate_label": _pct(rates["task_second_rate"]),
-                "description": "下级完成任务后，上级按任务 USDT 奖励获得一级/二级额外奖励。",
+                "description": "下级完成任务并成功入账后，一级上级按任务 USDT 奖励拿一级分成，二级上级继续拿二级分成。",
             },
         },
         "team_leader_tiers": team_leader_tiers,
@@ -103,7 +103,7 @@ def build_invite_activity_rules_payload(user=None) -> dict:
                 "items": [
                     (
                         f"{item['name']}：加入费用 {item['join_fee_usdt']} USDT；"
-                        f"官方任务 {item['daily_official_task_limit_label']}；"
+                        f"VIP任务专区 {item['daily_official_task_limit_label']}；"
                         f"提现手续费 {item['withdraw_fee_rate_label']}"
                     )
                     for item in membership_levels

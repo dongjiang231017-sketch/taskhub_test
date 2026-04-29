@@ -1,12 +1,12 @@
 import json
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 from uuid import uuid4
 
 from django.conf import settings
-from django.db import DEFAULT_DB_ALIAS, IntegrityError, OperationalError, connections, transaction
+from django.db import DEFAULT_DB_ALIAS, IntegrityError, OperationalError, ProgrammingError, connections, transaction
 from django.db.models import Case, CharField, Count, Exists, OuterRef, Q, Value, When
 from django.http import JsonResponse
 from django.utils import timezone
@@ -17,7 +17,7 @@ from django.views.decorators.http import require_http_methods
 from users.models import FrontendUser
 from wallets.models import Wallet
 
-from .models import ApiToken, Task, TaskApplication, TaskCategory
+from .models import ApiToken, MembershipLevelConfig, Task, TaskApplication, TaskCategory
 from .platform_publisher import get_task_platform_publisher, is_platform_publisher
 from .task_lifecycle import (
     active_taker_count,
@@ -147,6 +147,18 @@ def get_optional_api_user(request):
     request.api_user = user
     request.api_token = token
     return user
+
+
+def _close_default_connection_if_safe() -> bool:
+    """
+    旧代码会在少数高并发写路径主动重置连接，降低同连接事务叠写带来的兼容问题。
+    但在 Django TestCase 外层事务里关闭连接会直接打断测试事务，因此这里仅在安全时执行。
+    """
+    connection = connections[DEFAULT_DB_ALIAS]
+    if connection.in_atomic_block:
+        return False
+    connection.close()
+    return True
 
 
 def require_api_login(view_func):
@@ -348,6 +360,14 @@ def _social_action_binding_api_error(task: Task, user: FrontendUser):
     return api_error(msg, code=code, status=400)
 
 
+def _vip_task_application_api_error(task: Task, user: FrontendUser, *, existing: TaskApplication | None = None):
+    vip_error = _vip_task_application_error(task, user, existing=existing)
+    if not vip_error:
+        return None
+    code, msg = vip_error
+    return api_error(msg, code=code, status=400)
+
+
 def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool, int, str, int]:
     cfg = task.interaction_config or {}
     bearer = get_twitter_bearer_token()
@@ -485,6 +505,8 @@ def serialize_task(task, current_user=None, include_contact=False):
         "binding_verify_action": binding_verify_action(task),
         "interaction_verify_action": interaction_verify_action(task),
         "is_mandatory": task.is_mandatory,
+        "is_vip_exclusive": task.is_vip_exclusive,
+        "task_zone": "vip" if task.is_vip_exclusive else "public",
         "task_list_order": task.task_list_order,
         "reward_usdt": str(task.reward_usdt) if task.reward_usdt is not None else None,
         "reward_th_coin": str(task.reward_th_coin) if task.reward_th_coin is not None else None,
@@ -513,6 +535,116 @@ def _task_platform_key(task: Task) -> str:
     return "other"
 
 
+def _membership_level_config_for_user(user: FrontendUser | None) -> MembershipLevelConfig | None:
+    if user is None:
+        return None
+    try:
+        return MembershipLevelConfig.for_level(getattr(user, "membership_level", 0))
+    except (OperationalError, ProgrammingError):
+        return None
+
+
+def _vip_task_day_bounds() -> tuple[datetime, datetime]:
+    tz = timezone.get_current_timezone()
+    local_now = timezone.localtime(timezone.now(), tz)
+    start = timezone.make_aware(datetime.combine(local_now.date(), time.min), tz)
+    return start, start + timedelta(days=1)
+
+
+def _vip_task_usage_count(user: FrontendUser) -> int:
+    day_start, day_end = _vip_task_day_bounds()
+    return (
+        TaskApplication.objects.filter(
+            applicant=user,
+            task__is_vip_exclusive=True,
+            created_at__gte=day_start,
+            created_at__lt=day_end,
+        )
+        .exclude(status=TaskApplication.STATUS_REJECTED)
+        .count()
+    )
+
+
+def _vip_task_access_snapshot(user: FrontendUser | None) -> dict:
+    if user is None:
+        return {
+            "has_access": False,
+            "can_apply_now": False,
+            "membership_level": None,
+            "membership_name": None,
+            "used_today": 0,
+            "daily_limit": None,
+            "daily_limit_label": "需 VIP1+",
+            "remaining_today": 0,
+            "remaining_today_label": "登录后查看",
+            "unlimited": False,
+            "hint": "登录后可查看 VIP 任务专区并按会员等级领取任务。",
+        }
+
+    try:
+        membership_level = int(getattr(user, "membership_level", 0) or 0)
+    except (TypeError, ValueError):
+        membership_level = 0
+
+    level_config = _membership_level_config_for_user(user)
+    if level_config is None or not level_config.can_claim_official_tasks:
+        return {
+            "has_access": False,
+            "can_apply_now": False,
+            "membership_level": membership_level,
+            "membership_name": getattr(level_config, "name", None),
+            "used_today": 0,
+            "daily_limit": None,
+            "daily_limit_label": "需 VIP1+",
+            "remaining_today": 0,
+            "remaining_today_label": "0 次",
+            "unlimited": False,
+            "hint": "VIP 任务专区仅限 VIP1 及以上会员领取，请先升级会员。",
+        }
+
+    used_today = _vip_task_usage_count(user)
+    unlimited = bool(level_config.unlimited_tasks or level_config.daily_official_task_limit is None)
+    daily_limit = None if unlimited else int(level_config.daily_official_task_limit or 0)
+    remaining_today = None if unlimited else max(daily_limit - used_today, 0)
+    if unlimited:
+        hint = f"{level_config.name} 当前可不限量领取 VIP 任务。"
+    elif remaining_today <= 0:
+        hint = f"今日 VIP 任务领取次数已用完（{used_today}/{daily_limit}）。"
+    else:
+        hint = f"今日已接 {used_today}/{daily_limit} 个 VIP 任务，还可接 {remaining_today} 个。"
+    return {
+        "has_access": True,
+        "can_apply_now": unlimited or bool(remaining_today and remaining_today > 0),
+        "membership_level": membership_level,
+        "membership_name": level_config.name,
+        "used_today": used_today,
+        "daily_limit": daily_limit,
+        "daily_limit_label": "不限" if unlimited else f"{daily_limit} 次/天",
+        "remaining_today": remaining_today,
+        "remaining_today_label": "不限" if unlimited else f"{remaining_today} 次",
+        "unlimited": unlimited,
+        "hint": hint,
+    }
+
+
+def _vip_task_application_error(
+    task: Task,
+    user: FrontendUser,
+    *,
+    existing: TaskApplication | None = None,
+) -> tuple[int, str] | None:
+    if not task.is_vip_exclusive:
+        return None
+    snapshot = _vip_task_access_snapshot(user)
+    if not snapshot["has_access"]:
+        return 4401, snapshot["hint"]
+    if existing is not None:
+        return None
+    if not snapshot["can_apply_now"]:
+        return 4402, snapshot["hint"]
+    return None
+
+
 def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, int, str | None]:
     """列表/卡片用：当前用户点「开始」是否可能成功；POST 仍以 task_apply 为准。"""
     if task.publisher_id == user.id:
@@ -533,6 +665,10 @@ def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, 
             return False, code, msg
         # 本人已有报名：应允许继续（同步信息 / 校验），不因名额已满而误标为不可点
         return True, 0, None
+    vip_error = _vip_task_application_error(task, user)
+    if vip_error:
+        code, msg = vip_error
+        return False, code, msg
     binding_error = _social_action_binding_error(task, user)
     if binding_error:
         code, msg = binding_error
@@ -683,7 +819,7 @@ def tasks_center_api(request):
     mandatory_items = build_mandatory_task_items(current_user)
     now_iso = timezone.now().isoformat()
 
-    qs = (
+    base_qs = (
         Task.objects.filter(status=Task.STATUS_OPEN, is_mandatory=False)
         .select_related("publisher", "category")
         .annotate(
@@ -697,20 +833,20 @@ def tasks_center_api(request):
     category_id = (request.GET.get("category_id") or "").strip()
     if category_id and category_id != "all":
         try:
-            qs = qs.filter(category_id=int(category_id))
+            base_qs = base_qs.filter(category_id=int(category_id))
         except ValueError:
             return api_error("category_id 须为整数，或使用分类 slug 通过其它接口筛选", code=4053, status=400)
 
     keyword = (request.GET.get("keyword") or "").strip()
     if keyword:
-        qs = qs.filter(Q(title__icontains=keyword) | Q(description__icontains=keyword))
+        base_qs = base_qs.filter(Q(title__icontains=keyword) | Q(description__icontains=keyword))
 
     binding_platform = (request.GET.get("binding_platform") or "").strip()
     valid_bp = {c[0] for c in Task.BINDING_PLATFORM_CHOICES}
     if binding_platform:
         if binding_platform not in valid_bp:
             return api_error("binding_platform 不合法", code=4044, status=400)
-        qs = qs.filter(binding_platform=binding_platform)
+        base_qs = base_qs.filter(binding_platform=binding_platform)
 
     if current_user:
         has_done_for_current_user = TaskApplication.objects.filter(
@@ -726,9 +862,12 @@ def tasks_center_api(request):
             )
         )
         # 可用任务排除当前用户已完成项（尤其是入群类，避免完成后仍显示在可用列表）
-        qs = qs.annotate(done_for_current_user=Exists(has_done_for_current_user)).filter(
+        base_qs = base_qs.annotate(done_for_current_user=Exists(has_done_for_current_user)).filter(
             done_for_current_user=False
         )
+
+    vip_qs = base_qs.filter(is_vip_exclusive=True)
+    available_qs = base_qs.filter(is_vip_exclusive=False)
 
     try:
         page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
@@ -737,13 +876,16 @@ def tasks_center_api(request):
         return api_error(str(exc), code=4016, status=400)
     page_size = min(page_size, 50)
 
-    total = qs.count()
+    total = available_qs.count()
     offset = (page - 1) * page_size
-    page_tasks = list(qs.order_by("-updated_at", "-id")[offset : offset + page_size])
+    page_tasks = list(available_qs.order_by("-updated_at", "-id")[offset : offset + page_size])
+    vip_total = vip_qs.count()
+    vip_tasks = list(vip_qs.order_by("-updated_at", "-id")[:20])
 
     app_by_task: dict[int, TaskApplication] = {}
-    if current_user and page_tasks:
-        tids = [t.id for t in page_tasks]
+    lookup_tasks = [*page_tasks, *vip_tasks]
+    if current_user and lookup_tasks:
+        tids = [t.id for t in lookup_tasks]
         for a in TaskApplication.objects.filter(applicant=current_user, task_id__in=tids):
             app_by_task[a.task_id] = a
 
@@ -757,10 +899,26 @@ def tasks_center_api(request):
         enrich_task_apply_hints(t, data, current_user)
         available_items.append(data)
 
+    vip_items = []
+    for t in vip_tasks:
+        data = serialize_task(t, current_user=current_user)
+        enrich_task_card_fields(t, data)
+        data["my_application"] = (
+            _my_application_brief(app_by_task.get(t.id)) if current_user else None
+        )
+        enrich_task_apply_hints(t, data, current_user)
+        vip_items.append(data)
+
     return api_response(
         {
             "categories": category_items,
             "mandatory": {"items": mandatory_items, "updated_at": now_iso},
+            "vip_zone": {
+                "items": vip_items,
+                "updated_at": now_iso,
+                "summary": _vip_task_access_snapshot(current_user),
+                "pagination": {"page": 1, "page_size": 20, "total": vip_total},
+            },
             "available": {
                 "items": available_items,
                 "pagination": {"page": page, "page_size": page_size, "total": total},
@@ -1582,7 +1740,7 @@ def _task_apply_sync_pending_application(request, task, existing, body, bound_us
 @require_http_methods(["POST"])
 def task_apply_api(request, task_id):
     # 与装饰器里 ApiToken.update 等拆开连接，降低同连接事务里叠写触发 1785 的概率
-    connections[DEFAULT_DB_ALIAS].close()
+    _close_default_connection_if_safe()
 
     try:
         body = parse_json_body(request)
@@ -1648,6 +1806,9 @@ def task_apply_api(request, task_id):
                     return api_error("不能报名自己发布的任务", code=4033, status=400)
                 if task.status != Task.STATUS_OPEN:
                     return api_error("当前任务不可报名", code=4034, status=400)
+                vip_resp = _vip_task_application_api_error(task, request.api_user, existing=existing)
+                if vip_resp:
+                    return vip_resp
                 social_binding_resp = _social_action_binding_api_error(task, request.api_user)
                 if social_binding_resp:
                     return social_binding_resp
@@ -1684,6 +1845,9 @@ def task_apply_api(request, task_id):
                     return api_error("不能报名自己发布的任务", code=4033, status=400)
                 if task.status != Task.STATUS_OPEN:
                     return api_error("当前任务不可报名", code=4034, status=400)
+                vip_resp = _vip_task_application_api_error(task, request.api_user, existing=existing)
+                if vip_resp:
+                    return vip_resp
                 social_binding_resp = _social_action_binding_api_error(task, request.api_user)
                 if social_binding_resp:
                     return social_binding_resp
@@ -1708,6 +1872,9 @@ def task_apply_api(request, task_id):
             return api_error("不能报名自己发布的任务", code=4033, status=400)
         if task.status != Task.STATUS_OPEN:
             return api_error("当前任务不可报名", code=4034, status=400)
+        vip_resp = _vip_task_application_api_error(task, request.api_user)
+        if vip_resp:
+            return vip_resp
         social_binding_resp = _social_action_binding_api_error(task, request.api_user)
         if social_binding_resp:
             return social_binding_resp
@@ -2033,7 +2200,7 @@ def _register_task_reward_on_commit(application_pk: int, holder: dict) -> None:
 
     def _grant_after_commit():
         # 新开连接，避免与刚结束的请求事务/连接状态在同一 GTID 上下文中叠写。
-        connections[DEFAULT_DB_ALIAS].close()
+        _close_default_connection_if_safe()
         try:
             with transaction.atomic():
                 app = TaskApplication.objects.select_for_update().select_related("task", "applicant").get(pk=application_pk)

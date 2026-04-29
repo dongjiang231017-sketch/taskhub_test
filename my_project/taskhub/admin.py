@@ -86,6 +86,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "id",
         "title",
         "is_mandatory",
+        "is_vip_exclusive",
         "task_list_order",
         "interaction_type",
         "binding_platform",
@@ -102,6 +103,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "status",
         "category",
         "is_mandatory",
+        "is_vip_exclusive",
         "interaction_type",
         "binding_platform",
         "created_at",
@@ -199,11 +201,14 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "title",
                     "description",
                     "is_mandatory",
+                    "is_vip_exclusive",
                     "status",
                 ),
                 "description": (
                     "发布人保存时自动设为平台账号（<code>TASK_PLATFORM_PUBLISHER_ID</code>）。"
                     "<strong>首页必做列表</strong>（<code>GET /api/v1/tasks/mandatory/</code>）仅展示：勾选「首页必做」且<strong>状态为可报名</strong>的任务。"
+                    "<br><strong>VIP 任务专区</strong>：勾选后任务会进入前台 VIP 专区，仅 VIP1 及以上会员可接，"
+                    "并按“会员等级活动配置”里的每日上限限制领取。"
                     "<br><strong>任务分类</strong>请在上方选择，便于后续按类筛选与展示。"
                     "<strong>需求人数、截止时间、必做排序</strong>等在「名额与截止」分组填写；"
                     "普通任务录用人数达到需求人数且非「不按名额关单」玩法时，系统可能将任务标为<strong>已完成</strong>。"
@@ -565,7 +570,7 @@ class MembershipLevelConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "daily_official_task_limit",
                     "unlimited_tasks",
                 ),
-                "description": "每日官方任务上限留空表示不限量；VIP1 可填 1，VIP2 可填 2，VIP3 勾选不限任务。",
+                "description": "VIP 任务专区每日上限留空表示不限量；VIP1 可填 1，VIP2 可填 2，VIP3 勾选不限量。",
             },
         ),
         ("提现手续费", {"fields": ("withdraw_fee_rate",), "description": "按提现金额比例扣除；0.20 表示 20%，0 表示免手续费。"}),

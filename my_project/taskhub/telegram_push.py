@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from django.conf import settings
+from django.db.utils import OperationalError, ProgrammingError
 
 from users.models import FrontendUser
 
@@ -21,6 +22,8 @@ from .locale_prefs import (
     normalize_preferred_language,
     supported_languages_for_bot,
 )
+from .models import MembershipLevelConfig
+from .referral_config import get_referral_reward_rates
 
 logger = logging.getLogger(__name__)
 
@@ -574,11 +577,58 @@ def _welcome_image_url() -> str:
     return _clean_text(getattr(settings, "TELEGRAM_BOT_WELCOME_IMAGE_URL", ""))
 
 
+def _pct_text(value: Any) -> str:
+    dec = _to_decimal(value) * Decimal("100")
+    return f"{format(dec.normalize(), 'f').rstrip('0').rstrip('.') or '0'}%"
+
+
+def _vip_limit_text(level: MembershipLevelConfig | None, *, language: str) -> str:
+    if level is None:
+        return "配置中" if language == "zh-CN" else "configured in admin"
+    if level.unlimited_tasks or level.daily_official_task_limit is None:
+        return "不限量" if language == "zh-CN" else "unlimited"
+    return f"{level.daily_official_task_limit} 次/天" if language == "zh-CN" else f"{level.daily_official_task_limit}/day"
+
+
+def _welcome_bonus_appendix(language: str | None = None) -> str:
+    code = _language_code(language)
+    try:
+        rates = get_referral_reward_rates()
+        vip_levels = {
+            row.level: row
+            for row in MembershipLevelConfig.objects.filter(is_active=True, level__in=(1, 2, 3))
+        }
+    except (OperationalError, ProgrammingError):
+        return ""
+
+    vip1 = _vip_limit_text(vip_levels.get(1), language=code)
+    vip2 = _vip_limit_text(vip_levels.get(2), language=code)
+    vip3 = _vip_limit_text(vip_levels.get(3), language=code)
+
+    if code == "zh-CN":
+        return (
+            "\n\n"
+            f"💸 二级任务分佣：一级 {_pct_text(rates['task_direct_rate'])} / 二级 {_pct_text(rates['task_second_rate'])}\n"
+            f"💳 二级充值分佣：一级 {_pct_text(rates['recharge_direct_rate'])} / 二级 {_pct_text(rates['recharge_second_rate'])}\n"
+            f"⭐ VIP任务专区：VIP1 {vip1}，VIP2 {vip2}，VIP3 {vip3}"
+        )
+
+    return (
+        "\n\n"
+        f"💸 Two-level task commission: L1 {_pct_text(rates['task_direct_rate'])} / L2 {_pct_text(rates['task_second_rate'])}\n"
+        f"💳 Two-level recharge commission: L1 {_pct_text(rates['recharge_direct_rate'])} / L2 {_pct_text(rates['recharge_second_rate'])}\n"
+        f"⭐ VIP task zone: VIP1 {vip1}, VIP2 {vip2}, VIP3 {vip3}"
+    )
+
+
 def _welcome_text(display_name: str, *, language: str | None = None) -> str:
     custom = _clean_text(getattr(settings, "TELEGRAM_BOT_WELCOME_TEXT", ""))
+    appendix = _welcome_bonus_appendix(language)
     if custom:
-        return custom.replace("{name}", display_name)
-    return _bot_text(language, "welcome_text", name=display_name)
+        base = custom.replace("{name}", display_name)
+        return f"{base}{appendix}" if appendix else base
+    base = _bot_text(language, "welcome_text", name=display_name)
+    return f"{base}{appendix}" if appendix else base
 
 
 def _inline_keyboard(rows: list[list[tuple[str, str]]]) -> dict[str, Any] | None:

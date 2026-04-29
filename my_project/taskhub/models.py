@@ -170,6 +170,11 @@ class Task(models.Model):
         verbose_name="首页显示「必做」角标",
         db_comment="对应 TaskFlow 卡片右上角红色必做丝带",
     )
+    is_vip_exclusive = models.BooleanField(
+        default=False,
+        verbose_name="VIP 任务专区",
+        db_comment="勾选后仅在前台 VIP 任务专区展示，并按会员等级限制每日可接次数",
+    )
     task_list_order = models.PositiveIntegerField(
         default=0,
         verbose_name="首页列表排序权重",
@@ -492,7 +497,7 @@ class ReferralRewardConfig(models.Model):
 
 
 class MembershipLevelConfig(models.Model):
-    """会员等级活动规则：费用、可接任务范围、每日官方任务数量与提现手续费。"""
+    """会员等级活动规则：费用、VIP任务权限、每日领取上限与提现手续费。"""
 
     level = models.PositiveSmallIntegerField(
         unique=True,
@@ -509,15 +514,15 @@ class MembershipLevelConfig(models.Model):
         db_comment="升级/加入该等级所需 USDT；0 表示免费",
     )
     can_claim_free_tasks = models.BooleanField(default=True, verbose_name="可领取免费任务")
-    can_claim_official_tasks = models.BooleanField(default=False, verbose_name="可领取官方发布任务")
+    can_claim_official_tasks = models.BooleanField(default=False, verbose_name="可领取 VIP 任务专区")
     can_claim_high_commission_tasks = models.BooleanField(default=False, verbose_name="可领取高佣金任务")
     daily_official_task_limit = models.PositiveIntegerField(
         blank=True,
         null=True,
-        verbose_name="每日官方任务领取上限",
-        db_comment="留空表示不限量；VIP1 可填 1，VIP2 可填 2",
+        verbose_name="每日 VIP 任务领取上限",
+        db_comment="留空表示不限量；VIP1 可填 1，VIP2 可填 2，VIP3 可不限量",
     )
-    unlimited_tasks = models.BooleanField(default=False, verbose_name="不限任务")
+    unlimited_tasks = models.BooleanField(default=False, verbose_name="VIP任务不限量")
     withdraw_fee_rate = models.DecimalField(
         max_digits=6,
         decimal_places=4,

@@ -600,6 +600,116 @@ class AgentAdminLoginTests(TestCase):
         self.assertIn(reverse("agent_admin:login"), response.headers["Location"])
 
 
+class VipTaskZoneTests(TestCase):
+    def setUp(self):
+        self.publisher = FrontendUser.objects.create(
+            username="vip_task_publisher",
+            phone="13800000120",
+            password="pass123456",
+        )
+        self.vip1_user = FrontendUser.objects.create(
+            username="vip_level_1",
+            phone="13800000121",
+            password="pass123456",
+            membership_level=1,
+        )
+        self.vip0_user = FrontendUser.objects.create(
+            username="vip_level_0",
+            phone="13800000122",
+            password="pass123456",
+            membership_level=0,
+        )
+        self.vip1_token = ApiToken.issue_for_user(self.vip1_user)
+        self.vip0_token = ApiToken.issue_for_user(self.vip0_user)
+        MembershipLevelConfig.objects.update_or_create(
+            level=0,
+            defaults={
+                "name": "VIP0",
+                "join_fee_usdt": Decimal("0"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": False,
+                "daily_official_task_limit": None,
+                "withdraw_fee_rate": Decimal("0.20"),
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=1,
+            defaults={
+                "name": "VIP1",
+                "join_fee_usdt": Decimal("50"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "daily_official_task_limit": 1,
+                "withdraw_fee_rate": Decimal("0.10"),
+                "is_active": True,
+            },
+        )
+
+    def _make_task(self, title: str, *, vip: bool) -> Task:
+        return Task.objects.create(
+            publisher=self.publisher,
+            title=title,
+            description="任务说明",
+            reward_usdt=Decimal("1.00"),
+            reward_th_coin=Decimal("0.00"),
+            applicants_limit=10,
+            status=Task.STATUS_OPEN,
+            is_vip_exclusive=vip,
+        )
+
+    def test_task_center_splits_vip_zone_and_public_tasks(self):
+        vip_task = self._make_task("VIP 专属任务", vip=True)
+        public_task = self._make_task("普通任务", vip=False)
+
+        response = self.client.get(
+            reverse("taskhub-tasks-center"),
+            HTTP_AUTHORIZATION=f"Bearer {self.vip1_token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual([item["id"] for item in data["vip_zone"]["items"]], [vip_task.id])
+        self.assertEqual([item["id"] for item in data["available"]["items"]], [public_task.id])
+        self.assertTrue(data["vip_zone"]["summary"]["has_access"])
+        self.assertEqual(data["vip_zone"]["summary"]["daily_limit"], 1)
+
+    def test_vip0_user_cannot_apply_vip_task(self):
+        vip_task = self._make_task("VIP 限定任务", vip=True)
+
+        response = self.client.post(
+            reverse("taskhub-task-apply", args=[vip_task.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.vip0_token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 4401)
+        self.assertIn("VIP1", response.json()["message"])
+
+    def test_vip_daily_limit_blocks_second_new_vip_task(self):
+        first_vip_task = self._make_task("VIP 任务 1", vip=True)
+        second_vip_task = self._make_task("VIP 任务 2", vip=True)
+        TaskApplication.objects.create(
+            task=first_vip_task,
+            applicant=self.vip1_user,
+            status=TaskApplication.STATUS_ACCEPTED,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-task-apply", args=[second_vip_task.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.vip1_token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 4402)
+        self.assertIn("已用完", response.json()["message"])
+
+
 class SocialActionTaskTests(TestCase):
     def _create_user_pair(self):
         publisher = FrontendUser.objects.create(
