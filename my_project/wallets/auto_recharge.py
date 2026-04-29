@@ -23,7 +23,7 @@ from .models import RechargeNetworkConfig, RechargeRequest, UserRechargeAddress
 Account.enable_unaudited_hdwallet_features()
 
 _MONEY_QUANT = Decimal("0.01")
-_EVM_TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)").hex()
+_EVM_TRANSFER_TOPIC = "0x" + Web3.keccak(text="Transfer(address,address,uint256)").hex()
 _ERC20_ABI = [
     {
         "constant": True,

@@ -10,6 +10,7 @@ from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
 from wallets.auto_recharge import (
     DetectedTransfer,
+    _EVM_TRANSFER_TOPIC,
     _tron_base58_from_private_key,
     ensure_user_recharge_address,
     sync_network_recharges,
@@ -276,6 +277,9 @@ class ProfileLanguagePreferenceTests(TestCase):
 class RechargeAndMembershipTests(TestCase):
     _TEST_MNEMONIC = "test test test test test test test test test test test junk"
     _TEST_COLLECTOR_PRIVATE_KEY = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+    def test_evm_transfer_topic_is_0x_prefixed(self):
+        self.assertTrue(_EVM_TRANSFER_TOPIC.startswith("0x"))
 
     def test_get_recharges_returns_dedicated_address(self):
         user = FrontendUser.objects.create(username="recharge_api_user", phone="13800000041", password="pass123456")
