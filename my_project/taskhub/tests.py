@@ -28,6 +28,7 @@ from taskhub.api_views import _twitter_verify_error
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
+from taskhub.twitter_apify_client import _humanize_apify_twitter_error, apify_twitter_error_is_service_side
 from taskhub.twitter_client import TwitterApiError
 from taskhub.tiktok_apify_client import (
     _build_reposts_payload,
@@ -165,6 +166,18 @@ class TwitterVerificationErrorTests(SimpleTestCase):
         self.assertEqual(code, 4314)
         self.assertEqual(status, 429)
         self.assertIn("过于频繁", message)
+
+    def test_apify_twitter_auth_error_is_humanized(self):
+        message = _humanize_apify_twitter_error(
+            "User was not found or authentication token is not valid",
+            action_label="转发",
+        )
+
+        self.assertEqual(message, "Twitter Apify 校验服务鉴权失败，请联系管理员检查 Apify Token。")
+
+    def test_apify_twitter_cookie_error_is_service_side(self):
+        self.assertTrue(apify_twitter_error_is_service_side("auth_token cookie is required"))
+        self.assertFalse(apify_twitter_error_is_service_side("并未检测到转发，请先完成转发后再试。"))
 
 
 class ReferralRewardTests(TestCase):
@@ -869,9 +882,9 @@ class SocialActionTaskTests(TestCase):
         application.refresh_from_db()
         self.assertEqual(application.status, TaskApplication.STATUS_PENDING)
 
-    @patch("taskhub.api_views.user_follows_username")
-    @patch("taskhub.api_views.get_twitter_bearer_token")
-    def test_twitter_follow_task_rejects_when_follow_not_detected(self, mock_bearer, mock_follows):
+    @patch("taskhub.api_views.user_follows_username_via_apify")
+    @patch("taskhub.api_views.apify_twitter_follow_configured")
+    def test_twitter_follow_task_rejects_when_follow_not_detected(self, mock_configured, mock_follows):
         publisher, applicant, token = self._create_user_pair()
         self._bind_platform_account(
             publisher=publisher,
@@ -879,8 +892,8 @@ class SocialActionTaskTests(TestCase):
             platform=Task.BINDING_TWITTER,
             username="social_user_x",
         )
-        mock_bearer.return_value = "twitter-bearer"
-        mock_follows.return_value = False
+        mock_configured.return_value = True
+        mock_follows.return_value = (False, "并未检测到关注，请先完成关注后再试。")
         task = Task.objects.create(
             publisher=publisher,
             title="关注 Twitter",
@@ -909,11 +922,11 @@ class SocialActionTaskTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["code"], 4315)
-        mock_follows.assert_called_once_with("twitter-bearer", "social_user_x", "taskhub_official")
+        mock_follows.assert_called_once_with("social_user_x", "taskhub_official")
 
-    @patch("taskhub.api_views.user_retweeted_tweet")
-    @patch("taskhub.api_views.get_twitter_bearer_token")
-    def test_twitter_repost_task_verifies_against_bound_account(self, mock_bearer, mock_retweeted):
+    @patch("taskhub.api_views.user_retweeted_tweet_via_apify")
+    @patch("taskhub.api_views.apify_twitter_repost_configured")
+    def test_twitter_repost_task_verifies_against_bound_account(self, mock_configured, mock_retweeted):
         publisher, applicant, token = self._create_user_pair()
         self._bind_platform_account(
             publisher=publisher,
@@ -921,8 +934,8 @@ class SocialActionTaskTests(TestCase):
             platform=Task.BINDING_TWITTER,
             username="social_user_x",
         )
-        mock_bearer.return_value = "twitter-bearer"
-        mock_retweeted.return_value = True
+        mock_configured.return_value = True
+        mock_retweeted.return_value = (True, None)
         task = Task.objects.create(
             publisher=publisher,
             title="转发 Twitter",
@@ -952,7 +965,7 @@ class SocialActionTaskTests(TestCase):
         self.assertEqual(response.status_code, 200)
         application.refresh_from_db()
         self.assertEqual(application.status, TaskApplication.STATUS_ACCEPTED)
-        mock_retweeted.assert_called_once_with("twitter-bearer", "1234567890", "social_user_x")
+        mock_retweeted.assert_called_once_with("https://x.com/taskhub_official/status/1234567890", "social_user_x")
 
     @patch("taskhub.api_views.user_reposted_video_via_apify")
     @patch("taskhub.api_views.apify_tiktok_configured")

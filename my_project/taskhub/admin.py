@@ -628,22 +628,31 @@ class IntegrationSecretConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin
             "Twitter / X",
             {
                 "fields": ("twitter_bearer_token",),
-                "description": "API v2 只读 Bearer；留空则使用环境变量或 <code>core/twitter_secrets.py</code>。",
+                "description": "API v2 只读 Bearer；当前主要用于点赞校验与旧版兼容回退。留空则使用环境变量或 <code>core/twitter_secrets.py</code>。",
             },
         ),
         (
-            "Apify（Instagram / TikTok）",
+            "Apify（Instagram / Twitter / TikTok）",
             {
                 "fields": (
                     "apify_api_token",
                     "apify_instagram_actor_id",
                     "apify_instagram_timeout_sec",
+                    "apify_twitter_follow_actor_id",
+                    "apify_twitter_repost_actor_id",
+                    "apify_twitter_timeout_sec",
+                    "apify_twitter_following_max_results",
+                    "apify_twitter_auth_token",
+                    "apify_twitter_ct0",
                     "apify_tiktok_actor_id",
                     "apify_tiktok_timeout_sec",
                     "apify_tiktok_results_per_page",
                 ),
                 "description": (
-                    "共用同一 Apify Token；Actor 与超时等留空则回退 <code>core/settings.py</code> / <code>core/apify_secrets.py</code>。"
+                    "共用同一 Apify Token；Twitter 关注默认走 <code>scraperx/twitter-user-following-scraper</code>，"
+                    "Twitter 转发默认走 <code>api-ninja/x-twitter-replies-retweets-scraper</code>。"
+                    "其中关注校验建议额外填写 <code>auth_token</code> / <code>ct0</code>，以提升稳定性。"
+                    "Actor 与超时等留空则回退 <code>core/settings.py</code> / <code>core/apify_secrets.py</code>。"
                 ),
             },
         ),
@@ -652,7 +661,13 @@ class IntegrationSecretConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin
     readonly_fields = ("updated_at",)
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
-        if db_field.name in ("telegram_bot_token", "twitter_bearer_token", "apify_api_token"):
+        if db_field.name in (
+            "telegram_bot_token",
+            "twitter_bearer_token",
+            "apify_api_token",
+            "apify_twitter_auth_token",
+            "apify_twitter_ct0",
+        ):
             kwargs.setdefault(
                 "widget",
                 forms.Textarea(attrs={"rows": 4, "cols": 86, "style": "font-family:monospace;font-size:12px"}),

@@ -842,6 +842,44 @@ class IntegrationSecretConfig(models.Model):
         verbose_name="Instagram 请求超时（秒）",
         db_comment="留空则使用 settings / 环境变量",
     )
+    apify_twitter_follow_actor_id = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+        verbose_name="Apify Twitter 关注 Actor ID",
+        db_comment="默认 scraperx/twitter-user-following-scraper",
+    )
+    apify_twitter_repost_actor_id = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+        verbose_name="Apify Twitter 转发 Actor ID",
+        db_comment="默认 api-ninja/x-twitter-replies-retweets-scraper",
+    )
+    apify_twitter_timeout_sec = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Twitter 请求超时（秒）",
+        db_comment="留空则使用 settings / 环境变量",
+    )
+    apify_twitter_following_max_results = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Twitter 关注校验最大抓取数",
+        db_comment="用于从 following 列表中查找目标账号，留空则使用 settings / 环境变量",
+    )
+    apify_twitter_auth_token = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Twitter auth_token Cookie",
+        db_comment="用于 Apify 关注校验；留空则使用 Actor 默认或 settings / 环境变量",
+    )
+    apify_twitter_ct0 = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Twitter ct0 Cookie",
+        db_comment="用于 Apify 关注校验；留空则使用 Actor 默认或 settings / 环境变量",
+    )
     apify_tiktok_actor_id = models.CharField(
         max_length=256,
         blank=True,

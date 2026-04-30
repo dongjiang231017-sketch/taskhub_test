@@ -43,6 +43,13 @@ from .instagram_client import normalize_instagram_username
 from .instagram_apify_client import apify_instagram_configured, profile_contains_proof_via_apify
 from .telegram_group_client import user_is_member_of_chat
 from .locale_prefs import normalize_preferred_language
+from .twitter_apify_client import (
+    apify_twitter_error_is_service_side,
+    apify_twitter_follow_configured,
+    apify_twitter_repost_configured,
+    user_follows_username_via_apify,
+    user_retweeted_tweet_via_apify,
+)
 from .tiktok_apify_client import (
     apify_tiktok_configured,
     apify_tiktok_error_is_service_side,
@@ -371,9 +378,6 @@ def _vip_task_application_api_error(task: Task, user: FrontendUser, *, existing:
 
 def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool, int, str, int]:
     cfg = task.interaction_config or {}
-    bearer = get_twitter_bearer_token()
-    if not bearer:
-        return False, 4312, "Twitter 校验服务暂不可用，请稍后再试。", 503
 
     if task.interaction_type == Task.INTERACTION_FOLLOW:
         target = normalize_twitter_username((cfg.get("target_follow_username") or "").strip())
@@ -381,6 +385,17 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
             target = extract_username_from_profile_url((cfg.get("target_profile_url") or "").strip())
         if not target:
             return False, 4313, "Twitter 关注任务缺少目标账号配置，请联系管理员处理。", 400
+        if apify_twitter_follow_configured():
+            ok, err = user_follows_username_via_apify(bound_username, target)
+            if err and ok is False and err != "并未检测到关注，请先完成关注后再试。":
+                status = 503 if apify_twitter_error_is_service_side(err) else 400
+                return False, 4314, err, status
+            if not ok:
+                return False, 4315, err or "并未检测到关注，请先完成关注后再试。", 400
+            return True, 0, "", 200
+        bearer = get_twitter_bearer_token()
+        if not bearer:
+            return False, 4312, "Twitter 关注校验服务暂不可用，请稍后再试。", 503
         try:
             ok = user_follows_username(bearer, bound_username, target)
         except ValueError as exc:
@@ -398,6 +413,17 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
         tweet_id = extract_tweet_id_from_url(tweet_url)
         if not tweet_id:
             return False, 4319, "Twitter 转发任务缺少目标推文配置，请联系管理员处理。", 400
+        if apify_twitter_repost_configured():
+            ok, err = user_retweeted_tweet_via_apify(tweet_url, bound_username)
+            if err and ok is False and err != "并未检测到转发，请先完成转发后再试。":
+                status = 503 if apify_twitter_error_is_service_side(err) else 400
+                return False, 4320, err, status
+            if not ok:
+                return False, 4321, err or "并未检测到转发，请先完成转发后再试。", 400
+            return True, 0, "", 200
+        bearer = get_twitter_bearer_token()
+        if not bearer:
+            return False, 4312, "Twitter 转发校验服务暂不可用，请稍后再试。", 503
         try:
             ok = user_retweeted_tweet(bearer, tweet_id, bound_username)
         except ValueError as exc:
@@ -407,6 +433,9 @@ def _verify_twitter_social_action(task: Task, bound_username: str) -> tuple[bool
         return True, 0, "", 200
 
     if task.interaction_type == Task.INTERACTION_LIKE:
+        bearer = get_twitter_bearer_token()
+        if not bearer:
+            return False, 4312, "Twitter 点赞校验服务暂不可用，请稍后再试。", 503
         tweet_url = (
             (cfg.get("target_like_url") or "")
             or (cfg.get("target_tweet_url") or "")
@@ -1149,6 +1178,8 @@ def health_api(request):
             "service": "taskhub-api",
             "time": timezone.now().isoformat(),
             "instagram_apify_configured": apify_instagram_configured(),
+            "twitter_apify_follow_configured": apify_twitter_follow_configured(),
+            "twitter_apify_repost_configured": apify_twitter_repost_configured(),
             "tiktok_apify_configured": apify_tiktok_configured(),
             "telegram_bot_configured": bool(get_telegram_bot_token()),
         }

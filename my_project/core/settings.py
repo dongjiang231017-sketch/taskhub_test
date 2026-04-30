@@ -71,6 +71,17 @@ APIFY_INSTAGRAM_ACTOR_ID = os.environ.get(
     "APIFY_INSTAGRAM_ACTOR_ID", "apify/instagram-profile-scraper"
 ).strip()
 APIFY_INSTAGRAM_TIMEOUT_SEC = int(os.environ.get("APIFY_INSTAGRAM_TIMEOUT_SEC", "120"))
+# Twitter 关注 / 转发校验：优先走 Apify；关注 Actor 默认 scraperx/twitter-user-following-scraper，转发 Actor 默认 api-ninja/x-twitter-replies-retweets-scraper
+APIFY_TWITTER_FOLLOW_ACTOR_ID = os.environ.get(
+    "APIFY_TWITTER_FOLLOW_ACTOR_ID", "scraperx/twitter-user-following-scraper"
+).strip()
+APIFY_TWITTER_REPOST_ACTOR_ID = os.environ.get(
+    "APIFY_TWITTER_REPOST_ACTOR_ID", "api-ninja/x-twitter-replies-retweets-scraper"
+).strip()
+APIFY_TWITTER_TIMEOUT_SEC = int(os.environ.get("APIFY_TWITTER_TIMEOUT_SEC", "180"))
+APIFY_TWITTER_FOLLOWING_MAX_RESULTS = int(os.environ.get("APIFY_TWITTER_FOLLOWING_MAX_RESULTS", "2000"))
+APIFY_TWITTER_AUTH_TOKEN = os.environ.get("APIFY_TWITTER_AUTH_TOKEN", "").strip()
+APIFY_TWITTER_CT0 = os.environ.get("APIFY_TWITTER_CT0", "").strip()
 # TikTok 绑定转发校验：与 Instagram 共用 APIFY_API_TOKEN；默认 Actor clockworks/tiktok-scraper（profile Reposts）
 APIFY_TIKTOK_ACTOR_ID = os.environ.get("APIFY_TIKTOK_ACTOR_ID", "clockworks/tiktok-scraper").strip()
 APIFY_TIKTOK_TIMEOUT_SEC = int(os.environ.get("APIFY_TIKTOK_TIMEOUT_SEC", "180"))
@@ -82,13 +93,25 @@ try:
         "APIFY_API_TOKEN",
         "APIFY_INSTAGRAM_ACTOR_ID",
         "APIFY_INSTAGRAM_TIMEOUT_SEC",
+        "APIFY_TWITTER_FOLLOW_ACTOR_ID",
+        "APIFY_TWITTER_REPOST_ACTOR_ID",
+        "APIFY_TWITTER_TIMEOUT_SEC",
+        "APIFY_TWITTER_FOLLOWING_MAX_RESULTS",
+        "APIFY_TWITTER_AUTH_TOKEN",
+        "APIFY_TWITTER_CT0",
         "APIFY_TIKTOK_ACTOR_ID",
         "APIFY_TIKTOK_TIMEOUT_SEC",
         "APIFY_TIKTOK_RESULTS_PER_PAGE",
     ):
         _v = getattr(_apify_secrets, _k, None)
         if _v is not None and str(_v).strip():
-            if _k in ("APIFY_INSTAGRAM_TIMEOUT_SEC", "APIFY_TIKTOK_TIMEOUT_SEC", "APIFY_TIKTOK_RESULTS_PER_PAGE"):
+            if _k in (
+                "APIFY_INSTAGRAM_TIMEOUT_SEC",
+                "APIFY_TWITTER_TIMEOUT_SEC",
+                "APIFY_TWITTER_FOLLOWING_MAX_RESULTS",
+                "APIFY_TIKTOK_TIMEOUT_SEC",
+                "APIFY_TIKTOK_RESULTS_PER_PAGE",
+            ):
                 globals()[_k] = int(_v)
             else:
                 globals()[_k] = str(_v).strip()

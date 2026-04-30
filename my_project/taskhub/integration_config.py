@@ -19,6 +19,12 @@ class _IntegrationSecretFallback:
     apify_api_token = ""
     apify_instagram_actor_id = ""
     apify_instagram_timeout_sec = None
+    apify_twitter_follow_actor_id = ""
+    apify_twitter_repost_actor_id = ""
+    apify_twitter_timeout_sec = None
+    apify_twitter_following_max_results = None
+    apify_twitter_auth_token = ""
+    apify_twitter_ct0 = ""
     apify_tiktok_actor_id = ""
     apify_tiktok_timeout_sec = None
     apify_tiktok_results_per_page = None
@@ -79,6 +85,56 @@ def get_apify_instagram_timeout_sec() -> int:
         return max(30, min(v, 300))
     v = int(getattr(settings, "APIFY_INSTAGRAM_TIMEOUT_SEC", 120) or 120)
     return max(30, min(v, 300))
+
+
+def get_apify_twitter_follow_actor_id() -> str:
+    v = (_row().apify_twitter_follow_actor_id or "").strip()
+    if v:
+        return v
+    return str(
+        getattr(settings, "APIFY_TWITTER_FOLLOW_ACTOR_ID", "scraperx/twitter-user-following-scraper") or ""
+    ).strip()
+
+
+def get_apify_twitter_repost_actor_id() -> str:
+    v = (_row().apify_twitter_repost_actor_id or "").strip()
+    if v:
+        return v
+    return str(
+        getattr(settings, "APIFY_TWITTER_REPOST_ACTOR_ID", "api-ninja/x-twitter-replies-retweets-scraper") or ""
+    ).strip()
+
+
+def get_apify_twitter_timeout_sec() -> int:
+    r = _row()
+    if r.apify_twitter_timeout_sec is not None:
+        v = int(r.apify_twitter_timeout_sec)
+        return max(30, min(v, 600))
+    v = int(getattr(settings, "APIFY_TWITTER_TIMEOUT_SEC", 180) or 180)
+    return max(30, min(v, 600))
+
+
+def get_apify_twitter_following_max_results() -> int:
+    r = _row()
+    if r.apify_twitter_following_max_results is not None:
+        v = int(r.apify_twitter_following_max_results)
+        return max(50, min(v, 10000))
+    v = int(getattr(settings, "APIFY_TWITTER_FOLLOWING_MAX_RESULTS", 2000) or 2000)
+    return max(50, min(v, 10000))
+
+
+def get_apify_twitter_auth_token() -> str:
+    v = (_row().apify_twitter_auth_token or "").strip()
+    if v:
+        return v
+    return (getattr(settings, "APIFY_TWITTER_AUTH_TOKEN", "") or "").strip()
+
+
+def get_apify_twitter_ct0() -> str:
+    v = (_row().apify_twitter_ct0 or "").strip()
+    if v:
+        return v
+    return (getattr(settings, "APIFY_TWITTER_CT0", "") or "").strip()
 
 
 def get_apify_tiktok_actor_id() -> str:
