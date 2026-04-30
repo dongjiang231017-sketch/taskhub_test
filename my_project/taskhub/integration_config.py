@@ -92,7 +92,7 @@ def get_apify_twitter_follow_actor_id() -> str:
     if v:
         return v
     return str(
-        getattr(settings, "APIFY_TWITTER_FOLLOW_ACTOR_ID", "scraperx/twitter-user-following-scraper") or ""
+        getattr(settings, "APIFY_TWITTER_FOLLOW_ACTOR_ID", "automation-lab/twitter-scraper") or ""
     ).strip()
 
 

@@ -649,7 +649,7 @@ class IntegrationSecretConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin
                     "apify_tiktok_results_per_page",
                 ),
                 "description": (
-                    "共用同一 Apify Token；Twitter 关注默认走 <code>scraperx/twitter-user-following-scraper</code>，"
+                    "共用同一 Apify Token；Twitter 关注默认走 <code>automation-lab/twitter-scraper</code>（following 模式），"
                     "Twitter 转发默认走 <code>api-ninja/x-twitter-replies-retweets-scraper</code>。"
                     "其中关注校验建议额外填写 <code>auth_token</code> / <code>ct0</code>，以提升稳定性。"
                     "Actor 与超时等留空则回退 <code>core/settings.py</code> / <code>core/apify_secrets.py</code>。"

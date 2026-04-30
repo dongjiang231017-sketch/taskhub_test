@@ -847,7 +847,7 @@ class IntegrationSecretConfig(models.Model):
         blank=True,
         default="",
         verbose_name="Apify Twitter 关注 Actor ID",
-        db_comment="默认 scraperx/twitter-user-following-scraper",
+        db_comment="默认 automation-lab/twitter-scraper（following 模式）",
     )
     apify_twitter_repost_actor_id = models.CharField(
         max_length=256,

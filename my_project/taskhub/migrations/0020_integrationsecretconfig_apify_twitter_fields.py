@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
             name="apify_twitter_follow_actor_id",
             field=models.CharField(
                 blank=True,
-                db_comment="默认 scraperx/twitter-user-following-scraper",
+                db_comment="默认 automation-lab/twitter-scraper（following 模式）",
                 default="",
                 max_length=256,
                 verbose_name="Apify Twitter 关注 Actor ID",

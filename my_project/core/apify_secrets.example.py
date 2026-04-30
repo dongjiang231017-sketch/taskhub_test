@@ -12,8 +12,8 @@ APIFY_INSTAGRAM_ACTOR_ID = "apify/instagram-profile-scraper"
 # 可选；调用 run-sync 的 timeout 秒数（30–300）
 APIFY_INSTAGRAM_TIMEOUT_SEC = 120
 
-# Twitter / X 关注校验：默认 scraperx/twitter-user-following-scraper
-# APIFY_TWITTER_FOLLOW_ACTOR_ID = "scraperx/twitter-user-following-scraper"
+# Twitter / X 关注校验：默认 automation-lab/twitter-scraper（following 模式）
+# APIFY_TWITTER_FOLLOW_ACTOR_ID = "automation-lab/twitter-scraper"
 # APIFY_TWITTER_TIMEOUT_SEC = 180
 # APIFY_TWITTER_FOLLOWING_MAX_RESULTS = 2000
 # 如需提升关注校验稳定性，可填写你自己浏览器会话的 Cookie：

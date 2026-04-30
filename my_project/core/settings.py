@@ -73,7 +73,7 @@ APIFY_INSTAGRAM_ACTOR_ID = os.environ.get(
 APIFY_INSTAGRAM_TIMEOUT_SEC = int(os.environ.get("APIFY_INSTAGRAM_TIMEOUT_SEC", "120"))
 # Twitter 关注 / 转发校验：优先走 Apify；关注 Actor 默认 scraperx/twitter-user-following-scraper，转发 Actor 默认 api-ninja/x-twitter-replies-retweets-scraper
 APIFY_TWITTER_FOLLOW_ACTOR_ID = os.environ.get(
-    "APIFY_TWITTER_FOLLOW_ACTOR_ID", "scraperx/twitter-user-following-scraper"
+    "APIFY_TWITTER_FOLLOW_ACTOR_ID", "automation-lab/twitter-scraper"
 ).strip()
 APIFY_TWITTER_REPOST_ACTOR_ID = os.environ.get(
     "APIFY_TWITTER_REPOST_ACTOR_ID", "api-ninja/x-twitter-replies-retweets-scraper"
