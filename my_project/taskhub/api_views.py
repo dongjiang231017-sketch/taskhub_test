@@ -22,6 +22,7 @@ from .platform_publisher import get_task_platform_publisher, is_platform_publish
 from .task_lifecycle import (
     active_taker_count,
     after_publisher_accepts_application,
+    expire_stale_pending_applications_for_applicant,
     effective_applicants_limit,
     is_mandatory_no_slot_cap,
     maybe_mark_task_completed_when_slots_full,
@@ -731,6 +732,8 @@ def _mandatory_task_card_done_for_user(app: TaskApplication | None, task: Task) 
 
 def build_mandatory_task_items(current_user):
     """首页必做列表与任务中心共用。"""
+    if current_user:
+        expire_stale_pending_applications_for_applicant(current_user.id)
     qs = list(
         Task.objects.filter(is_mandatory=True, status=Task.STATUS_OPEN)
         .select_related("publisher", "category")
@@ -810,6 +813,8 @@ def tasks_center_api(request):
     任务中心页：分类 Tab + 必做任务 + 可用任务（分页），并附带卡片展示辅助字段。
     """
     current_user = get_optional_api_user(request)
+    if current_user:
+        expire_stale_pending_applications_for_applicant(current_user.id)
 
     cats = list(TaskCategory.objects.filter(is_active=True).order_by("-sort_order", "id"))
     category_items = [{"id": None, "name": "全部", "slug": "all", "is_all": True}] + [
@@ -1076,6 +1081,23 @@ def _task_record_reward_strings(task: Task) -> dict:
     return rewards
 
 
+def _task_record_can_continue(app: TaskApplication) -> bool:
+    if app.record_status in {RECORD_STATUS_COMPLETED, RECORD_STATUS_INVALID}:
+        return False
+    if app.status != TaskApplication.STATUS_PENDING:
+        return False
+    if app.task.interaction_type in {
+        Task.INTERACTION_JOIN_COMMUNITY,
+        Task.INTERACTION_ACCOUNT_BINDING,
+        Task.INTERACTION_FOLLOW,
+        Task.INTERACTION_REPOST,
+        Task.INTERACTION_LIKE,
+        Task.INTERACTION_COMMENT,
+    }:
+        return True
+    return bool(binding_verify_action(app.task) or interaction_verify_action(app.task))
+
+
 def serialize_task_record_item(app: TaskApplication, user: FrontendUser | None = None):
     task = app.task
     language = getattr(user, "preferred_language", None) if user is not None else None
@@ -1092,6 +1114,7 @@ def serialize_task_record_item(app: TaskApplication, user: FrontendUser | None =
         "record_status_display": RECORD_STATUS_LABELS.get(record_status, record_status),
         "rewards": _task_record_reward_strings(task),
         "time": {"label": time_label, "at": iso, "display": disp},
+        "can_continue": _task_record_can_continue(app),
     }
 
 
@@ -1741,6 +1764,7 @@ def _task_apply_sync_pending_application(request, task, existing, body, bound_us
 def task_apply_api(request, task_id):
     # 与装饰器里 ApiToken.update 等拆开连接，降低同连接事务里叠写触发 1785 的概率
     _close_default_connection_if_safe()
+    expire_stale_pending_applications_for_applicant(request.api_user.id, task_id=task_id)
 
     try:
         body = parse_json_body(request)
@@ -2123,6 +2147,7 @@ def my_task_records_api(request):
     """
     任务记录列表：与 Mini App「全部 / 进行中 / 审核中 / 已完成 / 已失效」Tab 对齐，分页。
     """
+    expire_stale_pending_applications_for_applicant(request.api_user.id)
     raw_tab = (request.GET.get("record_status") or request.GET.get("tab") or RECORD_TAB_ALL).strip().lower()
     tab = RECORD_TAB_ALL if raw_tab in ("", RECORD_TAB_ALL) else raw_tab
     allowed = {

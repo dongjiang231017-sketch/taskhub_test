@@ -1,4 +1,4 @@
-"""任务与报名生命周期：接取人数、必做绑定特例、满员/到期收尾、待处理超时。"""
+"""任务与报名生命周期：接取人数、满员/到期收尾、待处理超时。"""
 
 from __future__ import annotations
 
@@ -108,18 +108,27 @@ def active_taker_count(task: Task) -> int:
 
 def task_pending_can_expire(task: Task) -> bool:
     """是否适用「接取后须在超时内完成」。
-    - 传统 interaction=none 悬赏：等发布人审核，不自动超时。
-    - 必做账号绑定：多依赖站外操作，不自动超时（避免误杀进行中的绑定流程）。
+    传统 interaction=none 悬赏仍等待发布人审核；其余玩法统一支持超时自动失效。
     """
-    if task.interaction_type == Task.INTERACTION_NONE:
-        return False
-    if is_mandatory_no_slot_cap(task):
-        return False
-    return True
+    return task.interaction_type != Task.INTERACTION_NONE
 
 
 def _pending_timeout_minutes() -> int:
-    return max(1, int(getattr(settings, "TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", 30)))
+    return max(1, int(getattr(settings, "TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", 5)))
+
+
+def _expire_stale_pending_queryset(queryset) -> int:
+    n = 0
+    for app in queryset.select_related("task").iterator(chunk_size=200):
+        if not task_pending_can_expire(app.task):
+            continue
+        u = TaskApplication.objects.filter(pk=app.pk, status=TaskApplication.STATUS_PENDING).update(
+            status=TaskApplication.STATUS_CANCELLED,
+            decided_at=timezone.now(),
+        )
+        if u:
+            n += 1
+    return n
 
 
 def maybe_mark_task_completed_when_slots_full(task_id: int) -> None:
@@ -166,18 +175,21 @@ def expire_stale_pending_applications() -> int:
     candidates = TaskApplication.objects.filter(
         status=TaskApplication.STATUS_PENDING,
         created_at__lt=cutoff,
-    ).select_related("task")
-    n = 0
-    for app in candidates.iterator(chunk_size=200):
-        if not task_pending_can_expire(app.task):
-            continue
-        u = TaskApplication.objects.filter(pk=app.pk, status=TaskApplication.STATUS_PENDING).update(
-            status=TaskApplication.STATUS_CANCELLED,
-            decided_at=timezone.now(),
-        )
-        if u:
-            n += 1
-    return n
+    )
+    return _expire_stale_pending_queryset(candidates)
+
+
+def expire_stale_pending_applications_for_applicant(applicant_id: int, *, task_id: int | None = None) -> int:
+    """按用户（可选再按任务）即时释放已超时的 pending 报名。"""
+    cutoff = timezone.now() - timedelta(minutes=_pending_timeout_minutes())
+    candidates = TaskApplication.objects.filter(
+        applicant_id=applicant_id,
+        status=TaskApplication.STATUS_PENDING,
+        created_at__lt=cutoff,
+    )
+    if task_id is not None:
+        candidates = candidates.filter(task_id=task_id)
+    return _expire_stale_pending_queryset(candidates)
 
 
 def release_stale_takers_when_completed_deadline_passed() -> int:

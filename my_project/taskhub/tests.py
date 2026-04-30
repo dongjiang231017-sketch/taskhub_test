@@ -1,10 +1,12 @@
 from unittest.mock import MagicMock, patch
 
+from datetime import timedelta
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from users.agent_scope import AGENT_ROOT_USER_SESSION_KEY
 from users.models import AgentProfile, FrontendUser
@@ -709,6 +711,76 @@ class VipTaskZoneTests(TestCase):
         self.assertEqual(response.json()["code"], 4402)
         self.assertIn("已用完", response.json()["message"])
 
+
+class TaskRecordFlowTests(TestCase):
+    def setUp(self):
+        self.publisher = FrontendUser.objects.create(
+            username="record_task_publisher",
+            phone="13800000130",
+            password="pass123456",
+        )
+        self.user = FrontendUser.objects.create(
+            username="record_task_user",
+            phone="13800000131",
+            password="pass123456",
+        )
+        self.token = ApiToken.issue_for_user(self.user)
+
+    def _open_task(self, *, interaction_type=Task.INTERACTION_JOIN_COMMUNITY, verification_mode=None) -> Task:
+        return Task.objects.create(
+            publisher=self.publisher,
+            title="记录测试任务",
+            description="任务说明",
+            reward_usdt=Decimal("1.00"),
+            reward_th_coin=Decimal("0.00"),
+            applicants_limit=10,
+            status=Task.STATUS_OPEN,
+            interaction_type=interaction_type,
+            verification_mode=verification_mode,
+        )
+
+    def test_pending_join_task_record_can_continue(self):
+        task = self._open_task(interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
+        TaskApplication.objects.create(
+            task=task,
+            applicant=self.user,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+
+        response = self.client.get(
+            reverse("taskhub-my-task-records"),
+            HTTP_AUTHORIZATION=f"Bearer {self.token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["data"]["items"][0]
+        self.assertEqual(item["record_status"], "under_review")
+        self.assertTrue(item["can_continue"])
+
+    @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
+    def test_stale_pending_task_auto_expires_in_records(self):
+        task = self._open_task(interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=self.user,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+        stale_at = timezone.now() - timedelta(minutes=6)
+        TaskApplication.objects.filter(pk=app.pk).update(created_at=stale_at, updated_at=stale_at)
+
+        response = self.client.get(
+            reverse("taskhub-my-task-records"),
+            HTTP_AUTHORIZATION=f"Bearer {self.token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        app.refresh_from_db()
+        self.assertEqual(app.status, TaskApplication.STATUS_CANCELLED)
+        item = response.json()["data"]["items"][0]
+        self.assertEqual(item["record_status"], "invalid")
+        self.assertFalse(item["can_continue"])
 
 class SocialActionTaskTests(TestCase):
     def _create_user_pair(self):

@@ -114,9 +114,9 @@ INVITE_COMMISSION_RATE = Decimal(os.environ.get("INVITE_COMMISSION_RATE", "0.20"
 # 全站「运营天数」起点（YYYY-MM-DD）；不设则用库内最早用户/任务创建日
 PLATFORM_STATS_ANCHOR_DATE = os.environ.get("PLATFORM_STATS_ANCHOR_DATE", "").strip()
 
-# 非「传统悬赏 interaction=none」、非「必做账号绑定」类玩法：pending 超过该分钟数由 maintain_tasks 自动取消
+# 非传统悬赏 interaction=none 之外的玩法：pending 超过该分钟数自动失效
 TASK_PENDING_APPLICATION_TIMEOUT_MINUTES = int(
-    os.environ.get("TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", "30")
+    os.environ.get("TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", "5")
 )
 
 
