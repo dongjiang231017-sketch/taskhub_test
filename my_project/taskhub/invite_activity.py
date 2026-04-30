@@ -101,7 +101,7 @@ def build_invite_activity_rules_payload(user=None) -> dict:
                 "level_1_rate_label": _pct(rates["task_direct_rate"]),
                 "level_2_rate": str(rates["task_second_rate"]),
                 "level_2_rate_label": _pct(rates["task_second_rate"]),
-                "description": "下级完成任务并成功入账后，一级上级按任务 USDT 奖励拿一级分成，二级上级继续拿二级分成。",
+                "description": "下级完成任务并成功入账后，一级上级按任务奖励对应资产拿一级分成，二级上级继续拿二级分成。",
             },
         },
         "team_leader_tiers": team_leader_tiers,

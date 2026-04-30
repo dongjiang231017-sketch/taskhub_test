@@ -214,13 +214,23 @@ class ReferralRewardTests(TestCase):
         self.assertEqual(str(child_wallet.balance), "12.00")
         self.assertEqual(str(child_wallet.frozen), "2.00")
         self.assertEqual(str(referrer_wallet.balance), "3.00")
+        self.assertEqual(str(referrer_wallet.frozen), "0.50")
         self.assertEqual(result["referrer_reward_usdt"], "3.00")
+        self.assertEqual(result["referrer_reward_th_coin"], "0.50")
         self.assertTrue(
             Transaction.objects.filter(
                 wallet=referrer_wallet,
                 change_type="reward",
                 asset=Transaction.ASSET_USDT,
                 amount="3.00",
+            ).exists()
+        )
+        self.assertTrue(
+            Transaction.objects.filter(
+                wallet=referrer_wallet,
+                change_type="reward",
+                asset=Transaction.ASSET_TH_COIN,
+                amount="0.50",
             ).exists()
         )
 
@@ -265,6 +275,55 @@ class ReferralRewardTests(TestCase):
         self.assertEqual(
             [(item["level"], item["amount"]) for item in result["referrer_rewards"]],
             [(1, "2.00"), (2, "1.00")],
+        )
+
+    def test_task_reward_grants_th_coin_referrer_rewards(self):
+        grandparent = FrontendUser.objects.create(username="root_agent_th", phone="13800000011", password="pass123456")
+        referrer = FrontendUser.objects.create(
+            username="parent_agent_th",
+            phone="13800000012",
+            password="pass123456",
+            referrer=grandparent,
+        )
+        child = FrontendUser.objects.create(
+            username="child_member_th",
+            phone="13800000013",
+            password="pass123456",
+            referrer=referrer,
+        )
+        publisher = FrontendUser.objects.create(username="publisher_th", phone="13800000014", password="pass123456")
+        task = Task.objects.create(
+            publisher=publisher,
+            title="TH 分佣测试",
+            description="desc",
+            reward_th_coin=Decimal("10.00"),
+            applicants_limit=1,
+            status=Task.STATUS_OPEN,
+        )
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=child,
+            status=TaskApplication.STATUS_ACCEPTED,
+            quoted_price="0.00",
+        )
+        ReferralRewardConfig.objects.create(direct_invite_rate="0.2000", second_task_rate="0.1000")
+
+        result = grant_task_completion_reward(app)
+
+        referrer_wallet = Wallet.objects.get(user=referrer)
+        grandparent_wallet = Wallet.objects.get(user=grandparent)
+        self.assertEqual(str(referrer_wallet.balance), "0.00")
+        self.assertEqual(str(referrer_wallet.frozen), "2.00")
+        self.assertEqual(str(grandparent_wallet.balance), "0.00")
+        self.assertEqual(str(grandparent_wallet.frozen), "1.00")
+        self.assertEqual(result["referrer_reward_usdt"], "0.00")
+        self.assertEqual(result["referrer_reward_th_coin"], "3.00")
+        self.assertEqual(
+            [(item["level"], item["amount"], item["asset"]) for item in result["referrer_rewards"]],
+            [
+                (1, "2.00", Transaction.ASSET_TH_COIN),
+                (2, "1.00", Transaction.ASSET_TH_COIN),
+            ],
         )
 
     def test_recharge_transaction_no_longer_grants_two_level_commission(self):
