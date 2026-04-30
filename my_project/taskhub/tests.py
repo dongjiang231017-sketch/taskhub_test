@@ -711,6 +711,26 @@ class VipTaskZoneTests(TestCase):
         self.assertEqual(response.json()["code"], 4402)
         self.assertIn("已用完", response.json()["message"])
 
+    def test_cancelled_vip_task_still_consumes_daily_limit(self):
+        vip_task = self._make_task("VIP 已取消任务", vip=True)
+        TaskApplication.objects.create(
+            task=vip_task,
+            applicant=self.vip1_user,
+            status=TaskApplication.STATUS_CANCELLED,
+            quoted_price="0.00",
+        )
+
+        response = self.client.post(
+            reverse("taskhub-task-apply", args=[vip_task.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.vip1_token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 4402)
+        self.assertIn("已用完", response.json()["message"])
+
 
 class TaskRecordFlowTests(TestCase):
     def setUp(self):

@@ -636,11 +636,14 @@ def _vip_task_application_error(
 ) -> tuple[int, str] | None:
     if not task.is_vip_exclusive:
         return None
+    if existing is not None and existing.status in {
+        TaskApplication.STATUS_PENDING,
+        TaskApplication.STATUS_ACCEPTED,
+    }:
+        return None
     snapshot = _vip_task_access_snapshot(user)
     if not snapshot["has_access"]:
         return 4401, snapshot["hint"]
-    if existing is not None:
-        return None
     if not snapshot["can_apply_now"]:
         return 4402, snapshot["hint"]
     return None
@@ -660,6 +663,19 @@ def task_apply_precheck_for_list(task: Task, user: FrontendUser) -> tuple[bool, 
                 return False, 4101, "您已完成该任务"
         if existing.status == TaskApplication.STATUS_REJECTED:
             return False, 4036, "该任务报名已被拒绝，无法再次提交"
+        if existing.status == TaskApplication.STATUS_CANCELLED:
+            vip_error = _vip_task_application_error(task, user, existing=existing)
+            if vip_error:
+                code, msg = vip_error
+                return False, code, msg
+            binding_error = _social_action_binding_error(task, user)
+            if binding_error:
+                code, msg = binding_error
+                return False, code, msg
+            if not is_mandatory_no_slot_cap(task):
+                if active_taker_count(task) >= effective_applicants_limit(task):
+                    return False, 4035, "该任务接取人数已满"
+            return True, 0, None
         binding_error = _social_action_binding_error(task, user)
         if binding_error:
             code, msg = binding_error
@@ -1716,6 +1732,9 @@ def _task_apply_handle_existing_row(request, task, dup, body, bound_username, pr
         return api_error("该任务报名已被拒绝，无法再次提交", code=4036, status=409)
 
     if dup.status == TaskApplication.STATUS_CANCELLED:
+        vip_resp = _vip_task_application_api_error(task, request.api_user, existing=dup)
+        if vip_resp:
+            return vip_resp
         if not is_mandatory_no_slot_cap(task):
             if active_taker_count(task) >= effective_applicants_limit(task):
                 return api_error("该任务接取人数已满", code=4035, status=400)
