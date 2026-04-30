@@ -117,6 +117,13 @@ def _pending_timeout_minutes() -> int:
     return max(1, int(getattr(settings, "TASK_PENDING_APPLICATION_TIMEOUT_MINUTES", 5)))
 
 
+def touch_pending_application_activity(application_id: int) -> None:
+    """用户仍在继续完成/校验时，刷新 pending 报名的最近活跃时间，避免误判超时。"""
+    TaskApplication.objects.filter(pk=application_id, status=TaskApplication.STATUS_PENDING).update(
+        updated_at=timezone.now()
+    )
+
+
 def _expire_stale_pending_queryset(queryset) -> int:
     n = 0
     for app in queryset.select_related("task").iterator(chunk_size=200):
@@ -174,7 +181,7 @@ def expire_stale_pending_applications() -> int:
     cutoff = timezone.now() - timedelta(minutes=_pending_timeout_minutes())
     candidates = TaskApplication.objects.filter(
         status=TaskApplication.STATUS_PENDING,
-        created_at__lt=cutoff,
+        updated_at__lt=cutoff,
     )
     return _expire_stale_pending_queryset(candidates)
 
@@ -185,7 +192,7 @@ def expire_stale_pending_applications_for_applicant(applicant_id: int, *, task_i
     candidates = TaskApplication.objects.filter(
         applicant_id=applicant_id,
         status=TaskApplication.STATUS_PENDING,
-        created_at__lt=cutoff,
+        updated_at__lt=cutoff,
     )
     if task_id is not None:
         candidates = candidates.filter(task_id=task_id)

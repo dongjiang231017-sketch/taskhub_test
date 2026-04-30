@@ -26,6 +26,7 @@ from .task_lifecycle import (
     effective_applicants_limit,
     is_mandatory_no_slot_cap,
     maybe_mark_task_completed_when_slots_full,
+    touch_pending_application_activity,
 )
 from .task_rewards import grant_task_completion_reward
 from .binding_usernames import account_binding_requires_bound_username, normalize_bound_username_for_task
@@ -2328,6 +2329,7 @@ def application_twitter_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4083, status=400)
+    touch_pending_application_activity(application.id)
 
     try:
         body = parse_json_body(request)
@@ -2456,6 +2458,7 @@ def application_youtube_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4105, status=400)
+    touch_pending_application_activity(application.id)
 
     try:
         body = parse_json_body(request)
@@ -2533,6 +2536,7 @@ def application_instagram_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4205, status=400)
+    touch_pending_application_activity(application.id)
 
     try:
         body = parse_json_body(request)
@@ -2618,6 +2622,7 @@ def application_tiktok_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4225, status=400)
+    touch_pending_application_activity(application.id)
 
     try:
         body = parse_json_body(request)
@@ -2711,6 +2716,7 @@ def application_social_action_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4305, status=400)
+    touch_pending_application_activity(application.id)
 
     binding_error = _social_action_binding_error(task, request.api_user)
     if binding_error:
@@ -2784,6 +2790,7 @@ def application_telegram_group_verify_api(request, application_id):
 
     if application.status != TaskApplication.STATUS_PENDING:
         return api_error("当前报名已处理，无需再次校验", code=4316, status=400)
+    touch_pending_application_activity(application.id)
 
     bot_token = get_telegram_bot_token()
     if not bot_token:

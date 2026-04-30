@@ -971,6 +971,30 @@ class TaskRecordFlowTests(TestCase):
         self.assertEqual(item["record_status"], "invalid")
         self.assertFalse(item["can_continue"])
 
+    @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
+    def test_pending_task_uses_updated_at_as_last_activity_for_expiry(self):
+        task = self._open_task(interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=self.user,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+        created_at = timezone.now() - timedelta(minutes=8)
+        active_at = timezone.now() - timedelta(minutes=2)
+        TaskApplication.objects.filter(pk=app.pk).update(created_at=created_at, updated_at=active_at)
+
+        response = self.client.get(
+            reverse("taskhub-my-task-records"),
+            HTTP_AUTHORIZATION=f"Bearer {self.token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        app.refresh_from_db()
+        self.assertEqual(app.status, TaskApplication.STATUS_PENDING)
+        item = response.json()["data"]["items"][0]
+        self.assertNotEqual(item["record_status"], "invalid")
+
 class SocialActionTaskTests(TestCase):
     def _create_user_pair(self):
         publisher = FrontendUser.objects.create(
@@ -1079,6 +1103,53 @@ class SocialActionTaskTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["code"], 4315)
         mock_follows.assert_called_once_with("social_user_x", "taskhub_official")
+
+    @patch("taskhub.api_views.user_follows_username_via_apify")
+    @patch("taskhub.api_views.apify_twitter_follow_configured")
+    @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
+    def test_social_action_failed_verify_refreshes_pending_activity(self, mock_configured, mock_follows):
+        publisher, applicant, token = self._create_user_pair()
+        self._bind_platform_account(
+            publisher=publisher,
+            applicant=applicant,
+            platform=Task.BINDING_TWITTER,
+            username="social_user_x",
+        )
+        mock_configured.return_value = True
+        mock_follows.return_value = (False, "并未检测到关注，请先完成关注后再试。")
+        task = Task.objects.create(
+            publisher=publisher,
+            title="关注 Twitter",
+            description="打开链接后关注官方账号",
+            interaction_type=Task.INTERACTION_FOLLOW,
+            binding_platform=Task.BINDING_TWITTER,
+            interaction_config={"target_follow_username": "taskhub_official"},
+            reward_usdt=Decimal("0.50"),
+            reward_th_coin=Decimal("1.00"),
+            applicants_limit=5,
+            status=Task.STATUS_OPEN,
+        )
+        application = TaskApplication.objects.create(
+            task=task,
+            applicant=applicant,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+        stale_at = timezone.now() - timedelta(minutes=6)
+        TaskApplication.objects.filter(pk=application.pk).update(created_at=stale_at, updated_at=stale_at)
+
+        before = TaskApplication.objects.get(pk=application.pk).updated_at
+        response = self.client.post(
+            reverse("taskhub-application-verify-social-action", args=[application.id]),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        application.refresh_from_db()
+        self.assertEqual(application.status, TaskApplication.STATUS_PENDING)
+        self.assertGreater(application.updated_at, before)
 
     @patch("taskhub.api_views.user_retweeted_tweet_via_apify")
     @patch("taskhub.api_views.apify_twitter_repost_configured")
