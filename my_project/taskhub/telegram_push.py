@@ -609,14 +609,14 @@ def _welcome_bonus_appendix(language: str | None = None) -> str:
         return (
             "\n\n"
             f"💸 二级任务分佣：一级 {_pct_text(rates['task_direct_rate'])} / 二级 {_pct_text(rates['task_second_rate'])}\n"
-            f"💳 二级充值分佣：一级 {_pct_text(rates['recharge_direct_rate'])} / 二级 {_pct_text(rates['recharge_second_rate'])}\n"
+            f"💳 会员开通返利：一级 {_pct_text(rates['membership_direct_rate'])} / 二级 {_pct_text(rates['membership_second_rate'])}（按上级等级烧伤封顶）\n"
             f"⭐ VIP任务专区：VIP1 {vip1}，VIP2 {vip2}，VIP3 {vip3}"
         )
 
     return (
         "\n\n"
         f"💸 Two-level task commission: L1 {_pct_text(rates['task_direct_rate'])} / L2 {_pct_text(rates['task_second_rate'])}\n"
-        f"💳 Two-level recharge commission: L1 {_pct_text(rates['recharge_direct_rate'])} / L2 {_pct_text(rates['recharge_second_rate'])}\n"
+        f"💳 Membership purchase rebate: L1 {_pct_text(rates['membership_direct_rate'])} / L2 {_pct_text(rates['membership_second_rate'])} (burn-capped by uplink level)\n"
         f"⭐ VIP task zone: VIP1 {vip1}, VIP2 {vip2}, VIP3 {vip3}"
     )
 

@@ -2359,26 +2359,40 @@ def application_twitter_verify_api(request, application_id):
         return api_error("任务要求暂时无法校验，请联系发布方。", code=4092, status=400)
 
     need_twitter_api = (require_retweet and tweet_id) or (require_follow and target_follow)
-    bearer = get_twitter_bearer_token()
+    use_apify_follow = require_follow and target_follow and apify_twitter_follow_configured()
+    use_apify_repost = require_retweet and tweet_id and apify_twitter_repost_configured()
+    bearer = get_twitter_bearer_token() if need_twitter_api and not (use_apify_follow and use_apify_repost) else ""
 
-    if need_twitter_api and not bearer:
+    if need_twitter_api and not (use_apify_follow or use_apify_repost or bearer):
         return api_error("校验服务暂不可用，请稍后再试。", code=4085, status=503)
 
     if require_retweet and tweet_id:
-        try:
-            ok_rt = user_retweeted_tweet(bearer, tweet_id, uname)
-        except ValueError:
-            return api_error("暂时无法完成校验，请稍后再试。", code=4086, status=502)
+        if use_apify_repost:
+            ok_rt, err = user_retweeted_tweet_via_apify(tweet_url, uname)
+            if err and ok_rt is False and err != "并未检测到转发，请先完成转发后再试。":
+                status = 503 if apify_twitter_error_is_service_side(err) else 400
+                return api_error(err, code=4086, status=status)
+        else:
+            try:
+                ok_rt = user_retweeted_tweet(bearer, tweet_id, uname)
+            except ValueError:
+                return api_error("暂时无法完成校验，请稍后再试。", code=4086, status=502)
         if not ok_rt:
-            return api_error("并未检测到转发，请确认已完成转发后再试。", code=4087, status=400)
+            return api_error(err if use_apify_repost else "并未检测到转发，请确认已完成转发后再试。", code=4087, status=400)
 
     if require_follow and target_follow:
-        try:
-            ok_f = user_follows_username(bearer, uname, target_follow)
-        except ValueError:
-            return api_error("暂时无法完成校验，请稍后再试。", code=4088, status=502)
+        if use_apify_follow:
+            ok_f, err = user_follows_username_via_apify(uname, target_follow)
+            if err and ok_f is False and err != "并未检测到关注，请先完成关注后再试。":
+                status = 503 if apify_twitter_error_is_service_side(err) else 400
+                return api_error(err, code=4088, status=status)
+        else:
+            try:
+                ok_f = user_follows_username(bearer, uname, target_follow)
+            except ValueError:
+                return api_error("暂时无法完成校验，请稍后再试。", code=4088, status=502)
         if not ok_f:
-            return api_error("并未检测到关注，请先完成关注后再试。", code=4089, status=400)
+            return api_error(err if use_apify_follow else "并未检测到关注，请先完成关注后再试。", code=4089, status=400)
 
     last_holder = {"last_granted": {"granted": False, "usdt": "0", "th_coin": "0"}}
     try:

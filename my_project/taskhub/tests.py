@@ -267,7 +267,7 @@ class ReferralRewardTests(TestCase):
             [(1, "2.00"), (2, "1.00")],
         )
 
-    def test_recharge_transaction_grants_two_level_commission(self):
+    def test_recharge_transaction_no_longer_grants_two_level_commission(self):
         grandparent = FrontendUser.objects.create(username="recharge_root", phone="13800000008", password="pass123456")
         referrer = FrontendUser.objects.create(
             username="recharge_parent",
@@ -281,7 +281,7 @@ class ReferralRewardTests(TestCase):
             password="pass123456",
             referrer=referrer,
         )
-        ReferralRewardConfig.objects.create(direct_recharge_rate="0.1000", second_recharge_rate="0.0500")
+        ReferralRewardConfig.objects.create(direct_recharge_rate="0.2000", second_recharge_rate="0.1000")
         Wallet.objects.get_or_create(user=child)
         child_wallet = Wallet.objects.get(user=child)
 
@@ -295,8 +295,8 @@ class ReferralRewardTests(TestCase):
             remark="测试充值",
         )
 
-        self.assertEqual(str(Wallet.objects.get(user=referrer).balance), "10.00")
-        self.assertEqual(str(Wallet.objects.get(user=grandparent).balance), "5.00")
+        self.assertFalse(Wallet.objects.filter(user=referrer).exists())
+        self.assertFalse(Wallet.objects.filter(user=grandparent).exists())
 
 
 class ProfileLanguagePreferenceTests(TestCase):
@@ -573,6 +573,162 @@ class RechargeAndMembershipTests(TestCase):
                 amount="-50.00",
             ).exists()
         )
+
+    def test_membership_purchase_grants_two_level_rebate_with_burn_cap(self):
+        grandparent = FrontendUser.objects.create(
+            username="vip_root",
+            phone="13800000043",
+            password="pass123456",
+            membership_level=3,
+        )
+        referrer = FrontendUser.objects.create(
+            username="vip_parent",
+            phone="13800000044",
+            password="pass123456",
+            membership_level=2,
+            referrer=grandparent,
+        )
+        child = FrontendUser.objects.create(
+            username="vip_child",
+            phone="13800000045",
+            password="pass123456",
+            membership_level=1,
+            referrer=referrer,
+        )
+        token = ApiToken.issue_for_user(child)
+        Wallet.objects.create(user=child, balance=Decimal("1000.00"))
+        ReferralRewardConfig.objects.update_or_create(
+            id=1,
+            defaults={
+                "direct_invite_rate": Decimal("0.20"),
+                "second_task_rate": Decimal("0.10"),
+                "direct_recharge_rate": Decimal("0.20"),
+                "second_recharge_rate": Decimal("0.10"),
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=1,
+            defaults={
+                "name": "VIP1",
+                "join_fee_usdt": Decimal("10.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=2,
+            defaults={
+                "name": "VIP2",
+                "join_fee_usdt": Decimal("100.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=3,
+            defaults={
+                "name": "VIP3",
+                "join_fee_usdt": Decimal("1000.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+
+        response = self.client.post(
+            reverse("taskhub-me-membership-purchase"),
+            data={"level": 3},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        child.refresh_from_db()
+        self.assertEqual(child.membership_level, 3)
+        self.assertEqual(str(Wallet.objects.get(user=child).balance), "0.00")
+        self.assertEqual(str(Wallet.objects.get(user=referrer).balance), "20.00")
+        self.assertEqual(str(Wallet.objects.get(user=grandparent).balance), "100.00")
+        rewards = response.json()["data"]["referral_rewards"]
+        self.assertEqual(
+            [(item["level"], item["amount"], item["reward_base_amount"], item["burned"]) for item in rewards],
+            [(1, "20.00", "100.00", True), (2, "100.00", "1000.00", False)],
+        )
+
+    def test_membership_purchase_skips_v0_uplink_rebate(self):
+        grandparent = FrontendUser.objects.create(
+            username="vip_zero_root",
+            phone="13800000046",
+            password="pass123456",
+            membership_level=0,
+        )
+        referrer = FrontendUser.objects.create(
+            username="vip_level_1_parent",
+            phone="13800000047",
+            password="pass123456",
+            membership_level=1,
+            referrer=grandparent,
+        )
+        child = FrontendUser.objects.create(
+            username="vip_level_0_child",
+            phone="13800000048",
+            password="pass123456",
+            membership_level=0,
+            referrer=referrer,
+        )
+        token = ApiToken.issue_for_user(child)
+        Wallet.objects.create(user=child, balance=Decimal("1000.00"))
+        ReferralRewardConfig.objects.update_or_create(
+            id=1,
+            defaults={
+                "direct_invite_rate": Decimal("0.20"),
+                "second_task_rate": Decimal("0.10"),
+                "direct_recharge_rate": Decimal("0.20"),
+                "second_recharge_rate": Decimal("0.10"),
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=0,
+            defaults={
+                "name": "VIP0",
+                "join_fee_usdt": Decimal("0.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": False,
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=1,
+            defaults={
+                "name": "VIP1",
+                "join_fee_usdt": Decimal("100.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=3,
+            defaults={
+                "name": "VIP3",
+                "join_fee_usdt": Decimal("1000.00"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "is_active": True,
+            },
+        )
+
+        response = self.client.post(
+            reverse("taskhub-me-membership-purchase"),
+            data={"level": 3},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(str(Wallet.objects.get(user=referrer).balance), "20.00")
+        self.assertFalse(Wallet.objects.filter(user=grandparent).exists())
 
 
 class AgentAdminLoginTests(TestCase):

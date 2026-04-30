@@ -496,12 +496,13 @@ class ReferralRewardConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             },
         ),
         (
-            "充值分佣",
+            "会员开通返利",
             {
                 "fields": ("direct_recharge_rate", "second_recharge_rate"),
                 "description": (
-                    "充值分佣比例供充值入账流程使用；一级下级充值按一级比例，二级下级充值按二级比例。"
-                    "后台手动拨币不会自动触发充值分佣，避免误发。"
+                    "这里沿用原来的两项比例字段，但语义已改为<strong>会员开通返利</strong>："
+                    "下级购买会员后，一级/二级上级按比例获得返利。"
+                    "返利基数会按上级自身会员等级的加入费用进行<strong>烧伤封顶</strong>。"
                 ),
             },
         ),

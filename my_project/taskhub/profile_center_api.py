@@ -32,6 +32,7 @@ from .api_views import (
 )
 from .miniapp_api import _check_in_week_payload, _stats_for_user
 from .models import MembershipLevelConfig, Task, TaskApplication
+from .referral_rewards import grant_membership_purchase_referral_rewards
 
 _MONEY_QUANT = Decimal("0.01")
 _LEVEL_EXP_CAP = 5
@@ -596,6 +597,7 @@ def me_membership_purchase_api(request):
         return api_error("当前会员等级已不低于该等级，无需重复购买", code=4103, status=400)
 
     fee = Decimal(str(level_config.join_fee_usdt)).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    referral_rewards: list[dict] = []
     with transaction.atomic():
         Wallet.objects.get_or_create(user=user)
         wallet = Wallet.objects.select_for_update().get(user=user)
@@ -620,6 +622,12 @@ def me_membership_purchase_api(request):
 
         FrontendUser.objects.filter(pk=user.pk).update(membership_level=target_level)
         user.membership_level = target_level
+        referral_rewards = grant_membership_purchase_referral_rewards(
+            purchaser=user,
+            purchased_level=level_config,
+            purchase_amount=fee,
+            source_transaction=tx_row,
+        )
 
     Wallet.objects.get_or_create(user=user)
     wallet = Wallet.objects.get(user=user)
@@ -635,6 +643,7 @@ def me_membership_purchase_api(request):
                 "th_coin": str(wallet.frozen.quantize(_MONEY_QUANT)),
             },
             "transaction_id": tx_row.id if tx_row else None,
+            "referral_rewards": referral_rewards,
             "user": serialize_user(user),
         },
         message="会员购买成功",

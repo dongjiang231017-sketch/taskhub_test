@@ -36,18 +36,34 @@ def get_referral_reward_rates() -> dict[str, Decimal]:
     fallback = {
         "task_direct_rate": direct_task_fallback,
         "task_second_rate": Decimal("0.10"),
-        "recharge_direct_rate": Decimal("0.10"),
-        "recharge_second_rate": Decimal("0.05"),
+        "membership_direct_rate": Decimal("0.20"),
+        "membership_second_rate": Decimal("0.10"),
     }
     try:
         obj = ReferralRewardConfig.objects.order_by("-id").first()
     except (ProgrammingError, OperationalError):
-        return fallback
+        return {
+            **fallback,
+            # 兼容旧键名：前端若仍读取 recharge，也返回同一组“会员开通返利”比例
+            "recharge_direct_rate": fallback["membership_direct_rate"],
+            "recharge_second_rate": fallback["membership_second_rate"],
+        }
     if obj is None:
-        return fallback
-    return {
+        return {
+            **fallback,
+            "recharge_direct_rate": fallback["membership_direct_rate"],
+            "recharge_second_rate": fallback["membership_second_rate"],
+        }
+    result = {
         "task_direct_rate": Decimal(str(obj.direct_invite_rate)),
         "task_second_rate": Decimal(str(getattr(obj, "second_task_rate", fallback["task_second_rate"]))),
-        "recharge_direct_rate": Decimal(str(getattr(obj, "direct_recharge_rate", fallback["recharge_direct_rate"]))),
-        "recharge_second_rate": Decimal(str(getattr(obj, "second_recharge_rate", fallback["recharge_second_rate"]))),
+        "membership_direct_rate": Decimal(
+            str(getattr(obj, "direct_recharge_rate", fallback["membership_direct_rate"]))
+        ),
+        "membership_second_rate": Decimal(
+            str(getattr(obj, "second_recharge_rate", fallback["membership_second_rate"]))
+        ),
     }
+    result["recharge_direct_rate"] = result["membership_direct_rate"]
+    result["recharge_second_rate"] = result["membership_second_rate"]
+    return result

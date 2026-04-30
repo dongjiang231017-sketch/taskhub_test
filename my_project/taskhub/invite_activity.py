@@ -81,12 +81,20 @@ def build_invite_activity_rules_payload(user=None) -> dict:
         "intro": intro,
         "membership_levels": membership_levels,
         "commission_model": {
+            "membership_purchase": {
+                "level_1_rate": str(rates["membership_direct_rate"]),
+                "level_1_rate_label": _pct(rates["membership_direct_rate"]),
+                "level_2_rate": str(rates["membership_second_rate"]),
+                "level_2_rate_label": _pct(rates["membership_second_rate"]),
+                "description": "下级开通会员后，一级上级按后台比例获得会员返利，二级上级继续获得二级返利；返利基数会按上级自身会员等级的加入费用烧伤封顶。",
+            },
+            # 兼容旧前端字段名，语义已切到会员开通返利
             "recharge": {
-                "level_1_rate": str(rates["recharge_direct_rate"]),
-                "level_1_rate_label": _pct(rates["recharge_direct_rate"]),
-                "level_2_rate": str(rates["recharge_second_rate"]),
-                "level_2_rate_label": _pct(rates["recharge_second_rate"]),
-                "description": "下级每成功充值 1 笔后，一级上级可获得充值金额对应比例佣金，二级上级可继续获得二级充值佣金。",
+                "level_1_rate": str(rates["membership_direct_rate"]),
+                "level_1_rate_label": _pct(rates["membership_direct_rate"]),
+                "level_2_rate": str(rates["membership_second_rate"]),
+                "level_2_rate_label": _pct(rates["membership_second_rate"]),
+                "description": "兼容旧字段名：当前表示会员开通返利，而非充值返利。",
             },
             "task": {
                 "level_1_rate": str(rates["task_direct_rate"]),
@@ -112,8 +120,8 @@ def build_invite_activity_rules_payload(user=None) -> dict:
             {
                 "title": "动态收益：二级分佣模型",
                 "items": [
-                    f"一级充值佣金：{_pct(rates['recharge_direct_rate'])}",
-                    f"二级充值佣金：{_pct(rates['recharge_second_rate'])}",
+                    f"一级会员开通返利：{_pct(rates['membership_direct_rate'])}",
+                    f"二级会员开通返利：{_pct(rates['membership_second_rate'])}",
                     f"一级任务分成：{_pct(rates['task_direct_rate'])}",
                     f"二级任务分成：{_pct(rates['task_second_rate'])}",
                 ],

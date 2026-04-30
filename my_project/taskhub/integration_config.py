@@ -109,18 +109,18 @@ def get_apify_twitter_timeout_sec() -> int:
     r = _row()
     if r.apify_twitter_timeout_sec is not None:
         v = int(r.apify_twitter_timeout_sec)
-        return max(30, min(v, 600))
-    v = int(getattr(settings, "APIFY_TWITTER_TIMEOUT_SEC", 180) or 180)
-    return max(30, min(v, 600))
+        return max(20, min(v, 180))
+    v = int(getattr(settings, "APIFY_TWITTER_TIMEOUT_SEC", 45) or 45)
+    return max(20, min(v, 180))
 
 
 def get_apify_twitter_following_max_results() -> int:
     r = _row()
     if r.apify_twitter_following_max_results is not None:
         v = int(r.apify_twitter_following_max_results)
-        return max(50, min(v, 10000))
-    v = int(getattr(settings, "APIFY_TWITTER_FOLLOWING_MAX_RESULTS", 2000) or 2000)
-    return max(50, min(v, 10000))
+        return max(50, min(v, 1500))
+    v = int(getattr(settings, "APIFY_TWITTER_FOLLOWING_MAX_RESULTS", 300) or 300)
+    return max(50, min(v, 1500))
 
 
 def get_apify_twitter_auth_token() -> str:
