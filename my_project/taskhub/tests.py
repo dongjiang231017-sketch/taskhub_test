@@ -866,6 +866,7 @@ class VipTaskZoneTests(TestCase):
             task=first_vip_task,
             applicant=self.vip1_user,
             status=TaskApplication.STATUS_ACCEPTED,
+            decided_at=timezone.now(),
             quoted_price="0.00",
         )
 
@@ -899,6 +900,30 @@ class VipTaskZoneTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["message"], "报名成功")
+
+    def test_completed_mandatory_vip_task_still_consumes_vip_quota(self):
+        mandatory_vip_task = self._make_task("首页必做 VIP 任务", vip=True)
+        mandatory_vip_task.is_mandatory = True
+        mandatory_vip_task.save(update_fields=["is_mandatory", "updated_at"])
+        completed_at = timezone.now() - timedelta(minutes=1)
+        TaskApplication.objects.create(
+            task=mandatory_vip_task,
+            applicant=self.vip1_user,
+            status=TaskApplication.STATUS_ACCEPTED,
+            self_verified_at=completed_at,
+            decided_at=completed_at,
+            quoted_price="0.00",
+        )
+
+        response = self.client.get(
+            reverse("taskhub-tasks-center"),
+            HTTP_AUTHORIZATION=f"Bearer {self.vip1_token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()["data"]["vip_zone"]["summary"]
+        self.assertEqual(summary["used_today"], 1)
+        self.assertEqual(summary["remaining_today"], 0)
 
 
 class TaskRecordFlowTests(TestCase):

@@ -584,20 +584,15 @@ def _vip_task_day_bounds() -> tuple[datetime, datetime]:
 
 def _vip_task_usage_count(user: FrontendUser) -> int:
     day_start, day_end = _vip_task_day_bounds()
-    no_reward_filter = (
-        (Q(task__reward_usdt__isnull=True) | Q(task__reward_usdt__lte=0))
-        & (Q(task__reward_th_coin__isnull=True) | Q(task__reward_th_coin__lte=0))
-    )
     return (
         TaskApplication.objects.filter(
             applicant=user,
             task__is_vip_exclusive=True,
-            created_at__gte=day_start,
-            created_at__lt=day_end,
-        )
-        .filter(
-            Q(status=TaskApplication.STATUS_ACCEPTED, reward_paid_at__isnull=False)
-            | (Q(status=TaskApplication.STATUS_ACCEPTED) & no_reward_filter)
+            status=TaskApplication.STATUS_ACCEPTED,
+        ).filter(
+            Q(reward_paid_at__gte=day_start, reward_paid_at__lt=day_end)
+            | Q(decided_at__gte=day_start, decided_at__lt=day_end)
+            | Q(self_verified_at__gte=day_start, self_verified_at__lt=day_end)
         )
         .count()
     )
