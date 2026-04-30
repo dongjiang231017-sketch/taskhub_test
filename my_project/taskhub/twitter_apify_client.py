@@ -144,17 +144,33 @@ def user_follows_username_via_apify(source_username: str, target_username: str) 
     target = normalize_twitter_username(target_username)
     if not source or not target:
         return False, "无法解析 Twitter 用户名。"
-    payload: dict[str, Any] = {
-        "startUrls": [f"https://x.com/{source}/following"],
-        "maxResults": get_apify_twitter_following_max_results(),
-    }
+    actor_id = get_apify_twitter_follow_actor_id()
+    payload: dict[str, Any]
     auth_token = get_apify_twitter_auth_token().strip()
     ct0 = get_apify_twitter_ct0().strip()
-    if auth_token:
-        payload["authToken"] = auth_token
-    if ct0:
-        payload["ct0"] = ct0
-    data, err = _apify_post(get_apify_twitter_follow_actor_id(), payload)
+    if "automation-lab/twitter-scraper" in actor_id:
+        payload = {
+            "mode": "following",
+            "usernames": [source],
+            "maxResults": get_apify_twitter_following_max_results(),
+        }
+        cookie_parts: list[str] = []
+        if auth_token:
+            cookie_parts.append(f"auth_token={auth_token}")
+        if ct0:
+            cookie_parts.append(f"ct0={ct0}")
+        if cookie_parts:
+            payload["twitterCookie"] = "; ".join(cookie_parts)
+    else:
+        payload = {
+            "startUrls": [f"https://x.com/{source}/following"],
+            "maxResults": get_apify_twitter_following_max_results(),
+        }
+        if auth_token:
+            payload["authToken"] = auth_token
+        if ct0:
+            payload["ct0"] = ct0
+    data, err = _apify_post(actor_id, payload)
     if err:
         logger.warning("Twitter follow verification via Apify failed for %s -> %s: %s", source, target, err)
         return False, _humanize_apify_twitter_error(err, action_label="关注")
