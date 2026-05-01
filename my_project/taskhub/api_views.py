@@ -498,6 +498,7 @@ def serialize_task(task, current_user=None, include_contact=False):
     if real_application_count is None:
         real_application_count = task.applications.count()
     application_count = task.display_application_count(real_application_count)
+    virtual_application_count = task.display_virtual_application_count()
     can_view_contact = include_contact or (current_user and current_user.id == task.publisher_id)
     language = getattr(current_user, "preferred_language", None) if current_user is not None else None
     data = {
@@ -525,7 +526,9 @@ def serialize_task(task, current_user=None, include_contact=False):
         },
         "application_count": application_count,
         "real_application_count": real_application_count,
-        "virtual_application_count": int(task.virtual_application_count or 0),
+        "virtual_application_count": virtual_application_count,
+        "virtual_application_base_count": int(task.virtual_application_count or 0),
+        "virtual_application_auto_increment_count": int(task.virtual_auto_increment_count or 0),
         "interaction_type": task.interaction_type,
         "interaction_type_display": task.get_interaction_type_display(),
         "binding_platform": task.binding_platform or None,

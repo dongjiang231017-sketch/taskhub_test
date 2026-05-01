@@ -3,6 +3,7 @@
 from django.core.management.base import BaseCommand
 
 from taskhub.task_lifecycle import (
+    advance_virtual_application_counts,
     close_tasks_past_deadline,
     expire_stale_pending_applications,
     release_stale_takers_when_completed_deadline_passed,
@@ -16,9 +17,11 @@ class Command(BaseCommand):
         expired = expire_stale_pending_applications()
         closed = close_tasks_past_deadline()
         released_extra = release_stale_takers_when_completed_deadline_passed()
+        virtual_touched, virtual_added = advance_virtual_application_counts()
         self.stdout.write(
             self.style.SUCCESS(
                 f"超时取消报名 {expired} 条；到期关闭任务 {closed} 条；"
-                f"已为到期 completed 任务补释放报名 {released_extra} 条。"
+                f"已为到期 completed 任务补释放报名 {released_extra} 条；"
+                f"虚拟热度更新任务 {virtual_touched} 条，新增虚拟参与人数 {virtual_added}。"
             )
         )

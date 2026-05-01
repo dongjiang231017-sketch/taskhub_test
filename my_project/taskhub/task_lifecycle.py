@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import random
 from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, connections, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from .models import Task, TaskApplication
@@ -229,3 +231,58 @@ def close_tasks_past_deadline() -> int:
     n = Task.objects.filter(pk__in=ids).update(status=Task.STATUS_COMPLETED, updated_at=now)
     release_incomplete_applications_for_task_ids(ids)
     return n
+
+
+def advance_virtual_application_counts(*, now=None) -> tuple[int, int]:
+    """
+    为开启自动增长的任务按整小时随机增加虚拟参与人数。
+
+    返回 `(更新任务数, 新增虚拟人数总量)`。
+    """
+    current = now or timezone.now()
+    tasks = (
+        Task.objects.filter(
+            status=Task.STATUS_OPEN,
+            virtual_hourly_growth_max__gt=0,
+        )
+        .only(
+            "id",
+            "created_at",
+            "updated_at",
+            "virtual_hourly_growth_min",
+            "virtual_hourly_growth_max",
+            "virtual_growth_last_at",
+        )
+        .iterator(chunk_size=200)
+    )
+    touched = 0
+    total_added = 0
+    for task in tasks:
+        min_growth = max(0, int(task.virtual_hourly_growth_min or 0))
+        max_growth = max(0, int(task.virtual_hourly_growth_max or 0))
+        if max_growth < min_growth:
+            max_growth = min_growth
+        if max_growth <= 0:
+            continue
+
+        anchor = task.virtual_growth_last_at or task.updated_at or task.created_at or current
+        elapsed_hours = int(max(0, (current - anchor).total_seconds()) // 3600)
+        if elapsed_hours <= 0:
+            continue
+
+        added = sum(random.randint(min_growth, max_growth) for _ in range(elapsed_hours))
+        update_qs = Task.objects.filter(pk=task.pk)
+        if task.virtual_growth_last_at is None:
+            update_qs = update_qs.filter(virtual_growth_last_at__isnull=True)
+        else:
+            update_qs = update_qs.filter(virtual_growth_last_at=task.virtual_growth_last_at)
+
+        update_kwargs = {"virtual_growth_last_at": current}
+        if added > 0:
+            update_kwargs["virtual_auto_increment_count"] = F("virtual_auto_increment_count") + added
+
+        updated = update_qs.update(**update_kwargs)
+        if updated:
+            touched += 1
+            total_added += added
+    return touched, total_added

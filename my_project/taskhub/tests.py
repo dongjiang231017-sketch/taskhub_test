@@ -26,6 +26,7 @@ from django.test import SimpleTestCase
 from taskhub.models import ApiToken, MembershipLevelConfig, ReferralRewardConfig, Task, TaskApplication
 from taskhub.api_views import _twitter_verify_error, serialize_task
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
+from taskhub.task_lifecycle import advance_virtual_application_counts
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
 from taskhub.twitter_apify_client import _humanize_apify_twitter_error, apify_twitter_error_is_service_side
@@ -143,6 +144,91 @@ class TaskSerializationTests(TestCase):
         self.assertEqual(payload["real_application_count"], 2)
         self.assertEqual(payload["virtual_application_count"], 88)
         self.assertEqual(payload["application_count"], 90)
+
+    def test_serialize_task_includes_auto_growth_virtual_count(self):
+        publisher = FrontendUser.objects.create(username="publisher_growth", phone="13900000011", password="pass123456")
+        applicant = FrontendUser.objects.create(username="applicant_growth", phone="13900000012", password="pass123456")
+        task = Task.objects.create(
+            publisher=publisher,
+            title="自动增长虚拟人数任务",
+            description="desc",
+            applicants_limit=20,
+            virtual_application_count=30,
+            virtual_auto_increment_count=12,
+            status=Task.STATUS_OPEN,
+        )
+        TaskApplication.objects.create(task=task, applicant=applicant, quoted_price="0.00")
+
+        payload = serialize_task(task)
+
+        self.assertEqual(payload["real_application_count"], 1)
+        self.assertEqual(payload["virtual_application_base_count"], 30)
+        self.assertEqual(payload["virtual_application_auto_increment_count"], 12)
+        self.assertEqual(payload["virtual_application_count"], 42)
+        self.assertEqual(payload["application_count"], 43)
+
+
+class VirtualApplicationGrowthTests(TestCase):
+    @patch("taskhub.task_lifecycle.random.randint", side_effect=[2, 3])
+    def test_advance_virtual_application_counts_adds_random_hourly_growth(self, mock_rand):
+        publisher = FrontendUser.objects.create(
+            username="publisher_virtual_growth",
+            phone="13900000021",
+            password="pass123456",
+        )
+        task = Task.objects.create(
+            publisher=publisher,
+            title="每小时自动增长",
+            description="desc",
+            applicants_limit=20,
+            virtual_application_count=50,
+            virtual_hourly_growth_min=1,
+            virtual_hourly_growth_max=3,
+            status=Task.STATUS_OPEN,
+        )
+        now = timezone.now()
+        anchor = now - timedelta(hours=2, minutes=5)
+        Task.objects.filter(pk=task.pk).update(created_at=anchor, updated_at=anchor)
+        task.refresh_from_db()
+
+        touched, added = advance_virtual_application_counts(now=now)
+
+        task.refresh_from_db()
+        self.assertEqual(touched, 1)
+        self.assertEqual(added, 5)
+        self.assertEqual(task.virtual_auto_increment_count, 5)
+        self.assertEqual(task.display_virtual_application_count(), 55)
+        self.assertEqual(task.virtual_growth_last_at, now)
+        self.assertEqual(mock_rand.call_count, 2)
+
+    @patch("taskhub.task_lifecycle.random.randint")
+    def test_advance_virtual_application_counts_ignores_closed_tasks(self, mock_rand):
+        publisher = FrontendUser.objects.create(
+            username="publisher_virtual_growth_closed",
+            phone="13900000022",
+            password="pass123456",
+        )
+        task = Task.objects.create(
+            publisher=publisher,
+            title="关闭任务不增长",
+            description="desc",
+            applicants_limit=20,
+            virtual_application_count=50,
+            virtual_hourly_growth_min=1,
+            virtual_hourly_growth_max=3,
+            status=Task.STATUS_COMPLETED,
+        )
+        now = timezone.now()
+        anchor = now - timedelta(hours=3)
+        Task.objects.filter(pk=task.pk).update(created_at=anchor, updated_at=anchor)
+
+        touched, added = advance_virtual_application_counts(now=now)
+
+        task.refresh_from_db()
+        self.assertEqual(touched, 0)
+        self.assertEqual(added, 0)
+        self.assertEqual(task.virtual_auto_increment_count, 0)
+        mock_rand.assert_not_called()
 
 
 class TelegramWebhookStartTests(SimpleTestCase):

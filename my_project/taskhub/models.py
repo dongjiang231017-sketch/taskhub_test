@@ -183,7 +183,30 @@ class Task(models.Model):
     virtual_application_count = models.PositiveIntegerField(
         default=0,
         verbose_name="虚拟参与人数",
-        db_comment="仅用于前台任务列表展示的虚拟参与人数，会叠加真实报名数",
+        db_comment="基础虚拟参与人数，仅用于前台任务列表展示，会叠加真实报名数与自动增长数",
+    )
+    virtual_hourly_growth_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="每小时虚拟增长最小值",
+        db_comment="启用自动增长后，每整小时随机增加的最小人数；0 表示不启用",
+    )
+    virtual_hourly_growth_max = models.PositiveIntegerField(
+        default=0,
+        verbose_name="每小时虚拟增长最大值",
+        db_comment="启用自动增长后，每整小时随机增加的最大人数；需大于等于最小值",
+    )
+    virtual_auto_increment_count = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="自动增长累计人数",
+        db_comment="系统按小时自动累加的虚拟参与人数",
+    )
+    virtual_growth_last_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        editable=False,
+        verbose_name="虚拟增长上次结算时间",
+        db_comment="系统最近一次结算虚拟参与人数增长的时间",
     )
     reward_usdt = models.DecimalField(
         max_digits=12,
@@ -220,11 +243,18 @@ class Task(models.Model):
             base = int(real_count if real_count is not None else 0)
         except (TypeError, ValueError):
             base = 0
+        return max(0, base) + self.display_virtual_application_count()
+
+    def display_virtual_application_count(self) -> int:
         try:
             virtual = int(self.virtual_application_count or 0)
         except (TypeError, ValueError):
             virtual = 0
-        return max(0, base) + max(0, virtual)
+        try:
+            auto_growth = int(self.virtual_auto_increment_count or 0)
+        except (TypeError, ValueError):
+            auto_growth = 0
+        return max(0, virtual) + max(0, auto_growth)
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -253,6 +283,8 @@ class Task(models.Model):
                         "interaction_config": "「加入社群」类任务请在 JSON 里填写 invite_link（或 telegram_invite_link），即用户要打开的 Telegram 链接。"
                     }
                 )
+        if self.virtual_hourly_growth_max < self.virtual_hourly_growth_min:
+            raise ValidationError({"virtual_hourly_growth_max": "每小时虚拟增长最大值不能小于最小值。"})
 
     def save(self, *args, **kwargs):
         if self.interaction_type == self.INTERACTION_JOIN_COMMUNITY:

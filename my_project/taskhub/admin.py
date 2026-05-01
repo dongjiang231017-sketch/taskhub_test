@@ -88,7 +88,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "is_mandatory",
         "is_vip_exclusive",
         "task_list_order",
-        "virtual_application_count",
+        "virtual_application_display_count",
         "interaction_type",
         "binding_platform",
         "reward_usdt",
@@ -117,13 +117,22 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "publisher__invite_code",
     )
     autocomplete_fields = ("category",)
-    readonly_fields = ("interaction_config_guide",)
+    readonly_fields = (
+        "interaction_config_guide",
+        "virtual_application_display_count",
+        "virtual_auto_increment_count",
+        "virtual_growth_last_at",
+    )
 
     @admin.display(description="发布", ordering="publisher_id")
     def release_source(self, obj):
         if is_platform_publisher(obj.publisher_id):
             return "平台"
         return obj.publisher.username if obj.publisher_id else "—"
+
+    @admin.display(description="展示参与人数（虚拟）")
+    def virtual_application_display_count(self, obj):
+        return obj.display_virtual_application_count()
 
     def save_model(self, request, obj, form, change):
         obj.publisher = get_task_platform_publisher()
@@ -225,6 +234,11 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "deadline",
                     "task_list_order",
                     "virtual_application_count",
+                    "virtual_hourly_growth_min",
+                    "virtual_hourly_growth_max",
+                    "virtual_application_display_count",
+                    "virtual_auto_increment_count",
+                    "virtual_growth_last_at",
                 ),
                 "description": (
                     "<strong>需求人数（applicants_limit）</strong>：可录用名额；默认曾为 1，仅 1 人录用后普通任务即可能关单，"
@@ -232,7 +246,10 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "<br><strong>截止时间</strong>：留空则不按到期自动关单；到期后 cron "
                     "<code>python manage.py maintain_tasks</code> 会把仍「可报名」的任务标为已完成并释放未完成报名。"
                     "<br><strong>必做排序（task_list_order）</strong>：数值越大越靠前（与接口一致）。"
-                    "<br><strong>虚拟参与人数（virtual_application_count）</strong>：仅影响前台列表显示，会叠加到真实报名人数上，不影响名额、进度、录用与发奖。"
+                    "<br><strong>虚拟参与人数（virtual_application_count）</strong>：基础虚拟人数。"
+                    "<br><strong>每小时虚拟增长最小/最大值</strong>：配置后，现有 cron "
+                    "<code>python manage.py maintain_tasks</code> 会每小时随机累加一次，范围取两者之间。"
+                    "<br><strong>展示参与人数（虚拟）</strong>：基础虚拟人数 + 自动增长累计人数；仅影响前台列表显示，不影响名额、进度、录用与发奖。"
                 ),
             },
         ),
