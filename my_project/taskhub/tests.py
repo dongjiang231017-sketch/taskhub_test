@@ -24,7 +24,7 @@ from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from taskhub.models import ApiToken, MembershipLevelConfig, ReferralRewardConfig, Task, TaskApplication
-from taskhub.api_views import _twitter_verify_error, serialize_task
+from taskhub.api_views import _twitter_verify_error, enrich_task_card_fields, serialize_task
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_lifecycle import advance_virtual_application_counts
 from taskhub.task_rewards import grant_task_completion_reward
@@ -166,6 +166,30 @@ class TaskSerializationTests(TestCase):
         self.assertEqual(payload["virtual_application_auto_increment_count"], 12)
         self.assertEqual(payload["virtual_application_count"], 42)
         self.assertEqual(payload["application_count"], 43)
+
+    def test_enrich_task_card_fields_uses_displayed_application_count_for_progress(self):
+        publisher = FrontendUser.objects.create(
+            username="publisher_progress",
+            phone="13900000013",
+            password="pass123456",
+        )
+        task = Task.objects.create(
+            publisher=publisher,
+            title="进度条任务",
+            description="desc",
+            applicants_limit=10,
+            reward_usdt=Decimal("1.00"),
+            reward_th_coin=Decimal("0.00"),
+            virtual_application_count=4,
+            virtual_auto_increment_count=3,
+            status=Task.STATUS_OPEN,
+        )
+
+        payload = serialize_task(task)
+        enrich_task_card_fields(task, payload)
+
+        self.assertEqual(payload["application_count"], 7)
+        self.assertEqual(payload["slot_progress_percent"], 70)
 
 
 class VirtualApplicationGrowthTests(TestCase):

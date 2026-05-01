@@ -754,7 +754,13 @@ def enrich_task_card_fields(task: Task, data: dict) -> None:
         ac = task.applications.filter(status=TaskApplication.STATUS_ACCEPTED).count()
     data["accepted_count"] = ac
     al = effective_applicants_limit(task)
-    data["slot_progress_percent"] = min(100, int(ac * 100 / al))
+    display_applicants = data.get("application_count")
+    if not isinstance(display_applicants, int):
+        real_application_count = getattr(task, "application_count", None)
+        if real_application_count is None:
+            real_application_count = task.applications.count()
+        display_applicants = task.display_application_count(real_application_count)
+    data["slot_progress_percent"] = min(100, int(display_applicants * 100 / al))
     data["platform_key"] = _task_platform_key(task)
 
 
