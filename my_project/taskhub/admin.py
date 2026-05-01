@@ -88,6 +88,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "is_mandatory",
         "is_vip_exclusive",
         "task_list_order",
+        "virtual_application_count",
         "interaction_type",
         "binding_platform",
         "reward_usdt",
@@ -223,6 +224,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "applicants_limit",
                     "deadline",
                     "task_list_order",
+                    "virtual_application_count",
                 ),
                 "description": (
                     "<strong>需求人数（applicants_limit）</strong>：可录用名额；默认曾为 1，仅 1 人录用后普通任务即可能关单，"
@@ -230,6 +232,7 @@ class TaskAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                     "<br><strong>截止时间</strong>：留空则不按到期自动关单；到期后 cron "
                     "<code>python manage.py maintain_tasks</code> 会把仍「可报名」的任务标为已完成并释放未完成报名。"
                     "<br><strong>必做排序（task_list_order）</strong>：数值越大越靠前（与接口一致）。"
+                    "<br><strong>虚拟参与人数（virtual_application_count）</strong>：仅影响前台列表显示，会叠加到真实报名人数上，不影响名额、进度、录用与发奖。"
                 ),
             },
         ),

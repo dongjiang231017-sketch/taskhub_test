@@ -24,7 +24,7 @@ from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from taskhub.models import ApiToken, MembershipLevelConfig, ReferralRewardConfig, Task, TaskApplication
-from taskhub.api_views import _twitter_verify_error
+from taskhub.api_views import _twitter_verify_error, serialize_task
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
@@ -112,6 +112,37 @@ class LocalePreferenceTests(SimpleTestCase):
 
         self.assertEqual(language, "ar")
         self.assertIsNone(payload)
+
+
+class TaskSerializationTests(TestCase):
+    def test_serialize_task_adds_virtual_application_count_to_display_count(self):
+        publisher = FrontendUser.objects.create(username="publisher_virtual", phone="13900000001", password="pass123456")
+        applicant_one = FrontendUser.objects.create(
+            username="applicant_virtual_1",
+            phone="13900000002",
+            password="pass123456",
+        )
+        applicant_two = FrontendUser.objects.create(
+            username="applicant_virtual_2",
+            phone="13900000003",
+            password="pass123456",
+        )
+        task = Task.objects.create(
+            publisher=publisher,
+            title="虚拟参与人数任务",
+            description="desc",
+            applicants_limit=20,
+            virtual_application_count=88,
+            status=Task.STATUS_OPEN,
+        )
+        TaskApplication.objects.create(task=task, applicant=applicant_one, quoted_price="0.00")
+        TaskApplication.objects.create(task=task, applicant=applicant_two, quoted_price="0.00")
+
+        payload = serialize_task(task)
+
+        self.assertEqual(payload["real_application_count"], 2)
+        self.assertEqual(payload["virtual_application_count"], 88)
+        self.assertEqual(payload["application_count"], 90)
 
 
 class TelegramWebhookStartTests(SimpleTestCase):

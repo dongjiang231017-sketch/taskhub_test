@@ -180,6 +180,11 @@ class Task(models.Model):
         verbose_name="首页列表排序权重",
         db_comment="数值越大越靠前，用于必做任务区排序",
     )
+    virtual_application_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="虚拟参与人数",
+        db_comment="仅用于前台任务列表展示的虚拟参与人数，会叠加真实报名数",
+    )
     reward_usdt = models.DecimalField(
         max_digits=12,
         decimal_places=4,
@@ -209,6 +214,17 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"
+
+    def display_application_count(self, real_count: int | None = None) -> int:
+        try:
+            base = int(real_count if real_count is not None else 0)
+        except (TypeError, ValueError):
+            base = 0
+        try:
+            virtual = int(self.virtual_application_count or 0)
+        except (TypeError, ValueError):
+            virtual = 0
+        return max(0, base) + max(0, virtual)
 
     def clean(self):
         from django.core.exceptions import ValidationError
