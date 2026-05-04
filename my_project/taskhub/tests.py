@@ -28,6 +28,7 @@ from taskhub.api_views import _twitter_verify_error, enrich_task_card_fields, se
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.task_lifecycle import advance_virtual_application_counts
 from taskhub.task_rewards import grant_task_completion_reward
+from taskhub.telegram_group_client import extract_telegram_chat_id_from_config, normalize_telegram_chat_id
 from taskhub.telegram_webhook import _process_message, extract_start_payload_from_message_text
 from taskhub.twitter_apify_client import _humanize_apify_twitter_error, apify_twitter_error_is_service_side
 from taskhub.twitter_client import TwitterApiError
@@ -278,6 +279,35 @@ class TelegramWebhookStartTests(SimpleTestCase):
         self.assertEqual(mock_send.call_args.args[0], 12345)
         self.assertEqual(mock_send.call_args.kwargs["first_name"], "Ada")
         self.assertEqual(mock_send.call_args.kwargs["preferred_language"], "zh-CN")
+
+
+class TelegramJoinTaskConfigTests(SimpleTestCase):
+    def test_normalize_chat_id_accepts_public_channel_url(self):
+        self.assertEqual(
+            normalize_telegram_chat_id("https://t.me/taskhub_official"),
+            "@taskhub_official",
+        )
+        self.assertEqual(
+            normalize_telegram_chat_id("t.me/s/taskhub_official"),
+            "@taskhub_official",
+        )
+
+    def test_normalize_chat_id_rejects_private_invite_link(self):
+        self.assertIsNone(normalize_telegram_chat_id("https://t.me/+AbCdEf123"))
+        self.assertIsNone(normalize_telegram_chat_id("https://t.me/joinchat/AbCdEf123"))
+
+    def test_extract_chat_id_prefers_explicit_id_and_falls_back_to_public_invite(self):
+        self.assertEqual(
+            extract_telegram_chat_id_from_config({"telegram_chat_id": "-1001234567890"}),
+            "-1001234567890",
+        )
+        self.assertEqual(
+            extract_telegram_chat_id_from_config({"invite_link": "https://t.me/taskhub_official"}),
+            "@taskhub_official",
+        )
+        self.assertIsNone(
+            extract_telegram_chat_id_from_config({"invite_link": "https://t.me/+AbCdEf123"})
+        )
 
 
 class TwitterVerificationErrorTests(SimpleTestCase):

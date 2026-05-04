@@ -42,7 +42,7 @@ from .twitter_client import (
 from .integration_config import get_telegram_bot_token, get_twitter_bearer_token
 from .instagram_client import normalize_instagram_username
 from .instagram_apify_client import apify_instagram_configured, profile_contains_proof_via_apify
-from .telegram_group_client import user_is_member_of_chat
+from .telegram_group_client import extract_telegram_chat_id_from_config, user_is_member_of_chat
 from .locale_prefs import normalize_preferred_language
 from .twitter_apify_client import (
     apify_twitter_error_is_service_side,
@@ -289,7 +289,7 @@ def _join_community_telegram_verify_enabled(task: Task) -> bool:
     if task.interaction_type != Task.INTERACTION_JOIN_COMMUNITY:
         return False
     cfg = task.interaction_config or {}
-    chat = (cfg.get("telegram_chat_id") or cfg.get("telegram_group_id") or "").strip()
+    chat = extract_telegram_chat_id_from_config(cfg)
     if not chat:
         return False
     if cfg.get("require_telegram_member") is False:
@@ -2808,7 +2808,13 @@ def application_telegram_group_verify_api(request, application_id):
         return api_error("请先使用 Telegram 登录本应用，以便校验您是否已入群。", code=4318, status=400)
 
     cfg = task.interaction_config or {}
-    chat_id = (cfg.get("telegram_chat_id") or cfg.get("telegram_group_id") or "").strip()
+    chat_id = extract_telegram_chat_id_from_config(cfg)
+    if not chat_id:
+        return api_error(
+            "本任务未配置可校验的频道/群标识。请填写 telegram_chat_id / telegram_group_id 为 @频道用户名 或 -100… 数字 ID，不要填邀请链接。",
+            code=4333,
+            status=400,
+        )
 
     ok, err = user_is_member_of_chat(bot_token, chat_id, int(tid))
     if not ok:
