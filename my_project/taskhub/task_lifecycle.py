@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import random
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, connections, transaction
 from django.db.models import F
 from django.utils import timezone
 
-from .models import Task, TaskApplication
+from .models import PlatformStatsDisplayConfig, Task, TaskApplication
 
 
 def _task_has_positive_display_reward(task: Task) -> bool:
@@ -286,3 +286,98 @@ def advance_virtual_application_counts(*, now=None) -> tuple[int, int]:
             touched += 1
             total_added += added
     return touched, total_added
+
+
+def _decimal_to_cents(value) -> int:
+    amount = Decimal(value or "0")
+    cents = (amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return max(0, int(cents))
+
+
+def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
+    """
+    为首页统计按整小时随机增加虚拟展示值。
+
+    返回：
+    {
+        "updated": bool,
+        "elapsed_hours": int,
+        "added_total_tasks": int,
+        "added_total_rewards_usdt": Decimal,
+        "added_total_users": int,
+        "added_online_users": int,
+        "added_operating_days": int,
+    }
+    """
+    current = now or timezone.now()
+    config = PlatformStatsDisplayConfig.get()
+    anchor = config.virtual_growth_last_at or config.updated_at or current
+    elapsed_hours = int(max(0, (current - anchor).total_seconds()) // 3600)
+    result: dict[str, object] = {
+        "updated": False,
+        "elapsed_hours": elapsed_hours,
+        "added_total_tasks": 0,
+        "added_total_rewards_usdt": Decimal("0.00"),
+        "added_total_users": 0,
+        "added_online_users": 0,
+        "added_operating_days": 0,
+    }
+    if elapsed_hours <= 0:
+        return result
+
+    int_specs = (
+        (
+            "added_total_tasks",
+            "total_tasks_hourly_growth_min",
+            "total_tasks_hourly_growth_max",
+            "total_tasks_virtual_auto_increment",
+        ),
+        (
+            "added_total_users",
+            "total_users_hourly_growth_min",
+            "total_users_hourly_growth_max",
+            "total_users_virtual_auto_increment",
+        ),
+        (
+            "added_online_users",
+            "online_users_hourly_growth_min",
+            "online_users_hourly_growth_max",
+            "online_users_virtual_auto_increment",
+        ),
+        (
+            "added_operating_days",
+            "operating_days_hourly_growth_min",
+            "operating_days_hourly_growth_max",
+            "operating_days_virtual_auto_increment",
+        ),
+    )
+    update_kwargs = {"virtual_growth_last_at": current}
+    for result_key, min_field, max_field, auto_field in int_specs:
+        min_growth = max(0, int(getattr(config, min_field, 0) or 0))
+        max_growth = max(0, int(getattr(config, max_field, 0) or 0))
+        if max_growth < min_growth:
+            max_growth = min_growth
+        added = sum(random.randint(min_growth, max_growth) for _ in range(elapsed_hours)) if max_growth > 0 else 0
+        result[result_key] = added
+        if added > 0:
+            update_kwargs[auto_field] = F(auto_field) + added
+
+    reward_min_cents = _decimal_to_cents(config.total_rewards_usdt_hourly_growth_min)
+    reward_max_cents = _decimal_to_cents(config.total_rewards_usdt_hourly_growth_max)
+    if reward_max_cents < reward_min_cents:
+        reward_max_cents = reward_min_cents
+    reward_added_cents = (
+        sum(random.randint(reward_min_cents, reward_max_cents) for _ in range(elapsed_hours))
+        if reward_max_cents > 0
+        else 0
+    )
+    reward_added = (Decimal(reward_added_cents) / Decimal("100")).quantize(Decimal("0.01"))
+    result["added_total_rewards_usdt"] = reward_added
+    if reward_added_cents > 0:
+        update_kwargs["total_rewards_usdt_virtual_auto_increment"] = (
+            F("total_rewards_usdt_virtual_auto_increment") + reward_added
+        )
+
+    updated = PlatformStatsDisplayConfig.objects.filter(pk=config.pk).update(**update_kwargs)
+    result["updated"] = bool(updated)
+    return result

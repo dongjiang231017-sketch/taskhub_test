@@ -544,6 +544,175 @@ class ReferralRewardConfig(models.Model):
         return obj
 
 
+class PlatformStatsDisplayConfig(models.Model):
+    """排行页首页统计展示参数：真实值 + 虚拟基础值 + 每小时随机增长值。"""
+
+    total_tasks_virtual_base = models.PositiveIntegerField(
+        default=0,
+        verbose_name="任务总数虚拟基础值",
+        db_comment="叠加到真实任务总数上的基础虚拟值",
+    )
+    total_tasks_hourly_growth_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="任务总数每小时增长最小值",
+        db_comment="每整小时随机增加的最小任务总数虚拟值",
+    )
+    total_tasks_hourly_growth_max = models.PositiveIntegerField(
+        default=0,
+        verbose_name="任务总数每小时增长最大值",
+        db_comment="每整小时随机增加的最大任务总数虚拟值",
+    )
+    total_tasks_virtual_auto_increment = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="任务总数自动增长累计值",
+        db_comment="系统按小时累计增长的任务总数虚拟值",
+    )
+
+    total_rewards_usdt_virtual_base = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="总发放奖励虚拟基础值（USDT）",
+        db_comment="叠加到真实总发放奖励上的基础虚拟值",
+    )
+    total_rewards_usdt_hourly_growth_min = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="总发放奖励每小时增长最小值（USDT）",
+        db_comment="每整小时随机增加的最小总发放奖励虚拟值",
+    )
+    total_rewards_usdt_hourly_growth_max = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0"))],
+        verbose_name="总发放奖励每小时增长最大值（USDT）",
+        db_comment="每整小时随机增加的最大总发放奖励虚拟值",
+    )
+    total_rewards_usdt_virtual_auto_increment = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        editable=False,
+        verbose_name="总发放奖励自动增长累计值（USDT）",
+        db_comment="系统按小时累计增长的总发放奖励虚拟值",
+    )
+
+    total_users_virtual_base = models.PositiveIntegerField(
+        default=0,
+        verbose_name="总用户数虚拟基础值",
+        db_comment="叠加到真实总用户数上的基础虚拟值",
+    )
+    total_users_hourly_growth_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="总用户数每小时增长最小值",
+        db_comment="每整小时随机增加的最小总用户数虚拟值",
+    )
+    total_users_hourly_growth_max = models.PositiveIntegerField(
+        default=0,
+        verbose_name="总用户数每小时增长最大值",
+        db_comment="每整小时随机增加的最大总用户数虚拟值",
+    )
+    total_users_virtual_auto_increment = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="总用户数自动增长累计值",
+        db_comment="系统按小时累计增长的总用户数虚拟值",
+    )
+
+    online_users_virtual_base = models.PositiveIntegerField(
+        default=0,
+        verbose_name="在线人数虚拟基础值",
+        db_comment="排行页在线人数为纯展示字段，取基础值叠加自动增长值",
+    )
+    online_users_hourly_growth_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="在线人数每小时增长最小值",
+        db_comment="每整小时随机增加的最小在线人数虚拟值",
+    )
+    online_users_hourly_growth_max = models.PositiveIntegerField(
+        default=0,
+        verbose_name="在线人数每小时增长最大值",
+        db_comment="每整小时随机增加的最大在线人数虚拟值",
+    )
+    online_users_virtual_auto_increment = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="在线人数自动增长累计值",
+        db_comment="系统按小时累计增长的在线人数虚拟值",
+    )
+
+    operating_days_virtual_base = models.PositiveIntegerField(
+        default=0,
+        verbose_name="运营天数虚拟基础值",
+        db_comment="叠加到真实运营天数上的基础虚拟值",
+    )
+    operating_days_hourly_growth_min = models.PositiveIntegerField(
+        default=0,
+        verbose_name="运营天数每小时增长最小值",
+        db_comment="每整小时随机增加的最小运营天数虚拟值",
+    )
+    operating_days_hourly_growth_max = models.PositiveIntegerField(
+        default=0,
+        verbose_name="运营天数每小时增长最大值",
+        db_comment="每整小时随机增加的最大运营天数虚拟值",
+    )
+    operating_days_virtual_auto_increment = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="运营天数自动增长累计值",
+        db_comment="系统按小时累计增长的运营天数虚拟值",
+    )
+
+    virtual_growth_last_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        editable=False,
+        verbose_name="统计虚拟增长上次结算时间",
+        db_comment="系统最近一次按小时结算统计虚拟增长的时间",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "task_platform_stats_display_config"
+        verbose_name = "首页统计虚拟参数"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return "首页统计虚拟参数"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+        checks = (
+            ("total_tasks_hourly_growth_min", "total_tasks_hourly_growth_max", "任务总数"),
+            ("total_rewards_usdt_hourly_growth_min", "total_rewards_usdt_hourly_growth_max", "总发放奖励"),
+            ("total_users_hourly_growth_min", "total_users_hourly_growth_max", "总用户数"),
+            ("online_users_hourly_growth_min", "online_users_hourly_growth_max", "在线人数"),
+            ("operating_days_hourly_growth_min", "operating_days_hourly_growth_max", "运营天数"),
+        )
+        errors = {}
+        for min_field, max_field, label in checks:
+            min_value = getattr(self, min_field, 0) or 0
+            max_value = getattr(self, max_field, 0) or 0
+            if max_value < min_value:
+                errors[max_field] = f"{label}每小时增长最大值不能小于最小值。"
+        if errors:
+            raise ValidationError(errors)
+
+    @classmethod
+    def get(cls):
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj
+
+
 class MembershipLevelConfig(models.Model):
     """会员等级活动规则：费用、VIP任务权限、每日领取上限与提现手续费。"""
 

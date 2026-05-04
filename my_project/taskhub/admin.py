@@ -20,6 +20,7 @@ from .models import (
     InviteAchievementClaim,
     InviteAchievementTier,
     MembershipLevelConfig,
+    PlatformStatsDisplayConfig,
     ReferralRewardConfig,
     Task,
     TaskApplication,
@@ -543,6 +544,105 @@ class ReferralRewardConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             messages.error(request, "请先执行：python manage.py migrate")
             return redirect(reverse("admin:index"))
         return redirect(reverse("admin:taskhub_referralrewardconfig_change", args=[obj.pk]))
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PlatformStatsDisplayConfig)
+class PlatformStatsDisplayConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = ("id", "updated_at", "virtual_growth_last_at")
+    fieldsets = (
+        (
+            "说明",
+            {
+                "fields": (),
+                "description": (
+                    "首页排行榜顶部统计展示值 = <strong>真实统计</strong> + <strong>虚拟基础值</strong> + <strong>自动增长累计值</strong>。"
+                    "<br>自动增长累计值由计划任务 <code>python manage.py maintain_platform_stats</code> 按整小时随机累加。"
+                ),
+            },
+        ),
+        (
+            "任务总数",
+            {
+                "fields": (
+                    "total_tasks_virtual_base",
+                    "total_tasks_hourly_growth_min",
+                    "total_tasks_hourly_growth_max",
+                    "total_tasks_virtual_auto_increment",
+                )
+            },
+        ),
+        (
+            "总发放奖励（USDT）",
+            {
+                "fields": (
+                    "total_rewards_usdt_virtual_base",
+                    "total_rewards_usdt_hourly_growth_min",
+                    "total_rewards_usdt_hourly_growth_max",
+                    "total_rewards_usdt_virtual_auto_increment",
+                )
+            },
+        ),
+        (
+            "总用户数",
+            {
+                "fields": (
+                    "total_users_virtual_base",
+                    "total_users_hourly_growth_min",
+                    "total_users_hourly_growth_max",
+                    "total_users_virtual_auto_increment",
+                )
+            },
+        ),
+        (
+            "在线人数",
+            {
+                "fields": (
+                    "online_users_virtual_base",
+                    "online_users_hourly_growth_min",
+                    "online_users_hourly_growth_max",
+                    "online_users_virtual_auto_increment",
+                )
+            },
+        ),
+        (
+            "运营天数",
+            {
+                "fields": (
+                    "operating_days_virtual_base",
+                    "operating_days_hourly_growth_min",
+                    "operating_days_hourly_growth_max",
+                    "operating_days_virtual_auto_increment",
+                )
+            },
+        ),
+        ("系统", {"fields": ("virtual_growth_last_at", "updated_at")}),
+    )
+    readonly_fields = (
+        "total_tasks_virtual_auto_increment",
+        "total_rewards_usdt_virtual_auto_increment",
+        "total_users_virtual_auto_increment",
+        "online_users_virtual_auto_increment",
+        "operating_days_virtual_auto_increment",
+        "virtual_growth_last_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        try:
+            return not PlatformStatsDisplayConfig.objects.exists()
+        except ProgrammingError:
+            return False
+
+    def changelist_view(self, request, extra_context=None):
+        try:
+            obj = PlatformStatsDisplayConfig.get()
+        except ProgrammingError:
+            messages.error(request, "请先执行：python manage.py migrate")
+            return redirect(reverse("admin:index"))
+        return redirect(reverse("admin:taskhub_platformstatsdisplayconfig_change", args=[obj.pk]))
 
     def has_delete_permission(self, request, obj=None):
         return False

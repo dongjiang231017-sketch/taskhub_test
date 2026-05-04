@@ -17,7 +17,7 @@ from users.models import FrontendUser
 from wallets.models import Transaction, Wallet
 
 from .api_views import api_error, api_response, parse_positive_int, require_api_login
-from .models import Task, TaskApplication
+from .models import PlatformStatsDisplayConfig, Task, TaskApplication
 from .profile_center_api import _rank_position
 from .referral_config import get_referral_reward_rate
 
@@ -137,6 +137,36 @@ def _platform_total_users() -> int:
     return FrontendUser.objects.filter(status=True).count()
 
 
+def _platform_stats_display_snapshot() -> dict:
+    config = PlatformStatsDisplayConfig.get()
+    total_tasks = _platform_total_tasks() + max(
+        0,
+        int(config.total_tasks_virtual_base or 0),
+    ) + max(0, int(config.total_tasks_virtual_auto_increment or 0))
+    total_rewards = _platform_total_rewards_usdt() + _d_money(config.total_rewards_usdt_virtual_base) + _d_money(
+        config.total_rewards_usdt_virtual_auto_increment
+    )
+    total_users = _platform_total_users() + max(0, int(config.total_users_virtual_base or 0)) + max(
+        0,
+        int(config.total_users_virtual_auto_increment or 0),
+    )
+    online_users = max(0, int(config.online_users_virtual_base or 0)) + max(
+        0,
+        int(config.online_users_virtual_auto_increment or 0),
+    )
+    operating_days = _platform_operating_days() + max(0, int(config.operating_days_virtual_base or 0)) + max(
+        0,
+        int(config.operating_days_virtual_auto_increment or 0),
+    )
+    return {
+        "total_tasks": total_tasks,
+        "total_rewards_issued_usdt": str(_d_money(total_rewards)),
+        "total_users": total_users,
+        "online_users": online_users,
+        "operating_days": operating_days,
+    }
+
+
 def _invite_link_for_user(user: FrontendUser, request) -> dict:
     """
     邀请链接优先级（对外只暴露一条可复制 URL：full_url）：
@@ -195,16 +225,11 @@ def _user_public_card(u: FrontendUser) -> dict:
 @require_http_methods(["GET"])
 def rankings_platform_stats_api(request):
     """
-    排行页顶部全站统计：任务总数、总发放奖励(USDT)、总用户数、运营天数。
+    排行页顶部全站统计：任务总数、总发放奖励(USDT)、总用户数、在线人数、运营天数。
     可不登录。
     """
-    data = {
-        "total_tasks": _platform_total_tasks(),
-        "total_rewards_issued_usdt": str(_platform_total_rewards_usdt()),
-        "total_users": _platform_total_users(),
-        "operating_days": _platform_operating_days(),
-        "currency_display_hint": "UI 可将 USDT 展示为 ¥ 或 $，与产品一致即可",
-    }
+    data = _platform_stats_display_snapshot()
+    data["currency_display_hint"] = "UI 可将 USDT 展示为 ¥ 或 $，与产品一致即可"
     return api_response(data)
 
 
