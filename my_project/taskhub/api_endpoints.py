@@ -111,7 +111,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
     PublicEndpoint(
         ("GET", "POST"),
         "me/withdrawals/",
-        "提现：GET 记录与汇总；POST 发起（扣 USDT、BEP20 地址）",
+        "提现：GET 记录与汇总；POST 发起（扣 USDT、校验 ERC20/TRC20/BEP20 地址）",
         True,
     ),
     PublicEndpoint(

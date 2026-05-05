@@ -33,6 +33,7 @@ from taskhub.models import (
 )
 from taskhub.api_views import _twitter_verify_error, enrich_task_card_fields, serialize_task
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
+from taskhub.profile_center_api import _normalize_withdraw_chain, _percent_label, _valid_withdraw_address
 from taskhub.task_lifecycle import advance_virtual_application_counts, advance_virtual_platform_stats
 from taskhub.task_rewards import grant_task_completion_reward
 from taskhub.telegram_group_client import extract_telegram_chat_id_from_config, normalize_telegram_chat_id
@@ -45,6 +46,19 @@ from taskhub.tiktok_apify_client import (
     apify_tiktok_error_is_service_side,
     fetch_user_reposts_dataset_via_apify,
 )
+
+
+class WithdrawalValidationTests(SimpleTestCase):
+    def test_percent_label_never_uses_scientific_notation(self):
+        self.assertEqual(_percent_label(Decimal("0.10")), "10%")
+        self.assertEqual(_percent_label(Decimal("0.055")), "5.5%")
+
+    def test_withdraw_chain_and_address_validation(self):
+        self.assertEqual(_normalize_withdraw_chain("erc-20"), "ERC20")
+        self.assertTrue(_valid_withdraw_address("ERC20", "0x" + "a" * 40))
+        self.assertTrue(_valid_withdraw_address("BEP20", "0x" + "B" * 40))
+        self.assertTrue(_valid_withdraw_address("TRC20", "T" + "A" * 33))
+        self.assertFalse(_valid_withdraw_address("TRC20", "0x" + "a" * 40))
 
 
 class TikTokApifyClientTests(SimpleTestCase):

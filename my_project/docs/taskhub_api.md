@@ -665,6 +665,8 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `to_address` | 是 | BEP20 收款地址；也支持字段名 `address` |
 | `chain` | 否 | 默认 `BEP20` |
 
+`chain` 支持 `ERC20`、`TRC20`、`BEP20`；ERC20/BEP20 地址必须为 `0x` 开头 42 位 EVM 地址，TRC20 地址必须为 `T` 开头 34 位 TRON 地址。
+
 手续费优先按当前用户会员等级的 `withdraw_fee_rate` 计算：**fee = amount × withdraw_fee_rate**；若配置表未迁移或未命中，才回退 `WITHDRAW_FEE_USDT` 固定手续费。**到账 USDT = amount - fee**，且须 **> 0**。
 
 **业务错误**
@@ -1282,7 +1284,7 @@ ALTER TABLE django_session ENGINE=InnoDB;
 | GET | `/api/v1/me/center/` | 个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in） | 是 |
 | GET | `/api/v1/me/rewards/ledger/` | 收益与账单明细（钱包账变分页；summary 为累计入账） | 是 |
 | GET / POST | `/api/v1/me/recharges/` | USDT 自动充值：GET 返回用户专属地址与记录；POST 可按链获取专属地址，无需提交 TxHash | 是 |
-| GET / POST | `/api/v1/me/withdrawals/` | 提现：GET 记录与汇总；POST 发起（扣 USDT、BEP20 地址） | 是 |
+| GET / POST | `/api/v1/me/withdrawals/` | 提现：GET 记录与汇总；POST 发起（扣 USDT、校验 ERC20/TRC20/BEP20 地址） | 是 |
 | POST | `/api/v1/me/membership/purchase/` | 购买/升级会员等级：body.level；从钱包 USDT 扣除后台配置的加入费用 | 是 |
 | GET | `/api/v1/me/bindings/accounts/` | 账号管理：各平台绑定状态与开放必做绑定任务 | 是 |
 | GET / PATCH | `/api/v1/me/settings/notifications/` | 通知设置（占位，PATCH 暂未持久化） | 是 |

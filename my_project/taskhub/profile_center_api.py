@@ -175,8 +175,35 @@ def _ledger_summary_all_time(wallet: Wallet) -> tuple[Decimal, Decimal]:
 
 
 def _percent_label(rate: Decimal) -> str:
-    pct = (Decimal(str(rate)) * Decimal("100")).normalize()
-    return f"{pct}%"
+    pct = (Decimal(str(rate)) * Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    text = format(pct.normalize(), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return f"{text}%"
+
+
+_WITHDRAW_CHAINS = {"ERC20", "TRC20", "BEP20"}
+
+
+def _normalize_withdraw_chain(raw: str | None) -> str:
+    chain = (raw or "BEP20").strip().upper().replace("-", "")
+    if chain not in _WITHDRAW_CHAINS:
+        raise ValueError("提现网络仅支持 ERC20、TRC20、BEP20")
+    return chain
+
+
+def _valid_evm_address(addr: str) -> bool:
+    return re.fullmatch(r"0x[0-9a-fA-F]{40}", addr.strip()) is not None
+
+
+def _valid_tron_address(addr: str) -> bool:
+    return re.fullmatch(r"T[1-9A-HJ-NP-Za-km-z]{33}", addr.strip()) is not None
+
+
+def _valid_withdraw_address(chain: str, addr: str) -> bool:
+    if chain == "TRC20":
+        return _valid_tron_address(addr)
+    return _valid_evm_address(addr)
 
 
 def _withdraw_fee_quote(user: FrontendUser, gross: Decimal | None = None) -> dict:
@@ -451,7 +478,10 @@ def me_withdrawals_api(request):
 
     raw_amt = body.get("amount")
     to_addr = (body.get("to_address") or body.get("address") or "").strip()
-    chain = (body.get("chain") or "BEP20").strip() or "BEP20"
+    try:
+        chain = _normalize_withdraw_chain(body.get("chain") or body.get("address_type") or body.get("network"))
+    except ValueError as exc:
+        return api_error(str(exc), code=4085, status=400)
 
     try:
         gross = Decimal(str(raw_amt)).quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
@@ -470,8 +500,10 @@ def me_withdrawals_api(request):
     if net <= Decimal("0.00"):
         return api_error("扣除手续费后到账金额须大于 0", code=4083, status=400)
 
-    if not _valid_bep20_address(to_addr):
-        return api_error("收款地址格式无效（BEP20 须为 42 位 0x 或 40 位 hex）", code=4084, status=400)
+    if not _valid_withdraw_address(chain, to_addr):
+        if chain == "TRC20":
+            return api_error("收款地址格式无效（TRC20 须为 T 开头的 34 位地址）", code=4084, status=400)
+        return api_error(f"收款地址格式无效（{chain} 须为 0x 开头的 42 位地址）", code=4084, status=400)
 
     with transaction.atomic():
         w = Wallet.objects.select_for_update().get(user=user)
