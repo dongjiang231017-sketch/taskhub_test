@@ -4,6 +4,7 @@ import json
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, Q, Sum
 from django.shortcuts import render
@@ -88,6 +89,19 @@ def _choice_label(choices, key: str) -> str:
     return dict(choices).get(key, key or "未配置")
 
 
+def _online_window_minutes() -> int:
+    return max(
+        1,
+        int(getattr(settings, "ONLINE_USERS_ACTIVE_WINDOW_MINUTES", 5) or 5),
+    )
+
+
+def _online_members_count() -> int:
+    active_window_minutes = _online_window_minutes()
+    cutoff = timezone.now() - timedelta(minutes=active_window_minutes)
+    return FrontendUser.objects.filter(status=True, last_seen_at__gte=cutoff).count()
+
+
 @staff_member_required
 def dashboard_view(request):
     now = timezone.localtime(timezone.now())
@@ -106,6 +120,8 @@ def dashboard_view(request):
 
     total_members = users.count()
     active_members = users.filter(status=True).count()
+    online_members = _online_members_count()
+    online_window_minutes = _online_window_minutes()
     disabled_members = total_members - active_members
     telegram_members = users.filter(telegram_id__isnull=False).count()
     invited_members = users.filter(referrer_id__isnull=False).count()
@@ -303,6 +319,12 @@ def dashboard_view(request):
             "tone": "blue",
         },
         {
+            "label": "当前在线人数",
+            "value": _number(online_members),
+            "sub": f"最近 {online_window_minutes} 分钟活跃会员",
+            "tone": "green",
+        },
+        {
             "label": "今日完成任务",
             "value": _number(today_completed),
             "sub": f"总完成 {accepted_applications}，完成率 {completion_rate}",
@@ -327,6 +349,7 @@ def dashboard_view(request):
             "title": "用户增长",
             "items": [
                 ("启用会员", _number(active_members)),
+                ("当前在线", _number(online_members)),
                 ("禁用会员", _number(disabled_members)),
                 ("Telegram 登录", _number(telegram_members)),
                 ("有上级推荐", _number(invited_members)),

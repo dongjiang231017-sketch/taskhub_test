@@ -294,6 +294,15 @@ def _decimal_to_cents(value) -> int:
     return max(0, int(cents))
 
 
+def _stable_random_int(min_value: int, max_value: int) -> int:
+    if max_value <= 0:
+        return 0
+    if max_value <= min_value:
+        return min_value
+    # Two samples bias growth toward the configured middle, avoiding sharp jumps.
+    return (random.randint(min_value, max_value) + random.randint(min_value, max_value) + 1) // 2
+
+
 def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
     """
     为首页统计按整小时随机增加虚拟展示值。
@@ -329,27 +338,34 @@ def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
             "total_tasks_hourly_growth_min",
             "total_tasks_hourly_growth_max",
             "total_tasks_virtual_auto_increment",
+            False,
         ),
         (
             "added_total_users",
             "total_users_hourly_growth_min",
             "total_users_hourly_growth_max",
             "total_users_virtual_auto_increment",
+            True,
         ),
         (
             "added_operating_days",
             "operating_days_hourly_growth_min",
             "operating_days_hourly_growth_max",
             "operating_days_virtual_auto_increment",
+            False,
         ),
     )
     update_kwargs = {"virtual_growth_last_at": current}
-    for result_key, min_field, max_field, auto_field in int_specs:
+    for result_key, min_field, max_field, auto_field, stable in int_specs:
         min_growth = max(0, int(getattr(config, min_field, 0) or 0))
         max_growth = max(0, int(getattr(config, max_field, 0) or 0))
         if max_growth < min_growth:
             max_growth = min_growth
-        added = sum(random.randint(min_growth, max_growth) for _ in range(elapsed_hours)) if max_growth > 0 else 0
+        if max_growth > 0:
+            picker = _stable_random_int if stable else random.randint
+            added = sum(picker(min_growth, max_growth) for _ in range(elapsed_hours))
+        else:
+            added = 0
         result[result_key] = added
         if added > 0:
             update_kwargs[auto_field] = F(auto_field) + added
@@ -359,7 +375,7 @@ def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
     if reward_max_cents < reward_min_cents:
         reward_max_cents = reward_min_cents
     reward_added_cents = (
-        sum(random.randint(reward_min_cents, reward_max_cents) for _ in range(elapsed_hours))
+        sum(_stable_random_int(reward_min_cents, reward_max_cents) for _ in range(elapsed_hours))
         if reward_max_cents > 0
         else 0
     )

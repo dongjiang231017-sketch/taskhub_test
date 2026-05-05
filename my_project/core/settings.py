@@ -332,6 +332,11 @@ SIMPLEUI_CONFIG = {
             "models": [
                 {"name": "运营总览", "icon": "fas fa-gauge-high", "url": "/dashboard/"},
                 {
+                    "name": "首页排行榜统计配置",
+                    "icon": "fas fa-chart-line",
+                    "url": "/admin/taskhub/platformstatsdisplayconfig/",
+                },
+                {
                     "name": "接口目录",
                     "icon": "fas fa-book",
                     "url": "/api/v1/docs/",

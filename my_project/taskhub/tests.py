@@ -266,7 +266,7 @@ class VirtualApplicationGrowthTests(TestCase):
 class PlatformStatsVirtualConfigTests(TestCase):
     @patch(
         "taskhub.task_lifecycle.random.randint",
-        side_effect=[2, 3, 4, 5, 0, 1, 5, 8],
+        side_effect=[2, 3, 4, 5, 6, 7, 0, 1, 5, 8, 9, 10],
     )
     def test_advance_virtual_platform_stats_applies_hourly_growth(self, mock_rand):
         config = PlatformStatsDisplayConfig.get()
@@ -300,15 +300,15 @@ class PlatformStatsVirtualConfigTests(TestCase):
         self.assertTrue(summary["updated"])
         self.assertEqual(summary["elapsed_hours"], 2)
         self.assertEqual(summary["added_total_tasks"], 5)
-        self.assertEqual(summary["added_total_rewards_usdt"], Decimal("0.13"))
-        self.assertEqual(summary["added_total_users"], 9)
+        self.assertEqual(summary["added_total_rewards_usdt"], Decimal("0.17"))
+        self.assertEqual(summary["added_total_users"], 12)
         self.assertEqual(summary["added_operating_days"], 1)
         self.assertEqual(config.total_tasks_virtual_auto_increment, 5)
-        self.assertEqual(config.total_rewards_usdt_virtual_auto_increment, Decimal("0.13"))
-        self.assertEqual(config.total_users_virtual_auto_increment, 9)
+        self.assertEqual(config.total_rewards_usdt_virtual_auto_increment, Decimal("0.17"))
+        self.assertEqual(config.total_users_virtual_auto_increment, 12)
         self.assertEqual(config.operating_days_virtual_auto_increment, 1)
         self.assertEqual(config.virtual_growth_last_at, now)
-        self.assertEqual(mock_rand.call_count, 8)
+        self.assertEqual(mock_rand.call_count, 12)
 
     @override_settings(ONLINE_USERS_ACTIVE_WINDOW_MINUTES=5)
     def test_rankings_platform_stats_api_uses_realtime_online_users(self):
