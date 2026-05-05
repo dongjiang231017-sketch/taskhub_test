@@ -367,6 +367,11 @@ SIMPLEUI_CONFIG = {
                     "icon": "fas fa-edit",
                     "url": "/admin/announcements/announcement/?post_type__exact=newbie_guide",
                 },
+                {
+                    "name": "在线反馈",
+                    "icon": "fas fa-headset",
+                    "url": "/admin/taskhub/onlinefeedback/",
+                },
             ],
         },
         {
