@@ -32,6 +32,7 @@ from taskhub.models import (
     TaskApplication,
 )
 from taskhub.api_views import _twitter_verify_error, enrich_task_card_fields, serialize_task
+from taskhub.invite_activity import build_invite_activity_rules_payload
 from taskhub.locale_prefs import normalize_preferred_language, split_start_payload_language
 from taskhub.profile_center_api import _normalize_withdraw_chain, _percent_label, _valid_withdraw_address
 from taskhub.task_lifecycle import advance_virtual_application_counts, advance_virtual_platform_stats
@@ -59,6 +60,49 @@ class WithdrawalValidationTests(SimpleTestCase):
         self.assertTrue(_valid_withdraw_address("BEP20", "0x" + "B" * 40))
         self.assertTrue(_valid_withdraw_address("TRC20", "T" + "A" * 33))
         self.assertFalse(_valid_withdraw_address("TRC20", "0x" + "a" * 40))
+
+
+class InviteActivityRulesTests(TestCase):
+    def test_membership_labels_avoid_scientific_percent_and_vip0_has_no_vip_access(self):
+        MembershipLevelConfig.objects.update_or_create(
+            level=0,
+            defaults={
+                "name": "VIP0",
+                "join_fee_usdt": Decimal("0"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": False,
+                "can_claim_high_commission_tasks": False,
+                "daily_official_task_limit": None,
+                "unlimited_tasks": False,
+                "withdraw_fee_rate": Decimal("0.20"),
+                "sort_order": 0,
+                "is_active": True,
+            },
+        )
+        MembershipLevelConfig.objects.update_or_create(
+            level=1,
+            defaults={
+                "name": "VIP1",
+                "join_fee_usdt": Decimal("50"),
+                "can_claim_free_tasks": True,
+                "can_claim_official_tasks": True,
+                "can_claim_high_commission_tasks": False,
+                "daily_official_task_limit": 1,
+                "unlimited_tasks": False,
+                "withdraw_fee_rate": Decimal("0.10"),
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
+        levels = build_invite_activity_rules_payload()["membership_levels"]
+        vip0 = next(item for item in levels if item["level"] == 0)
+        vip1 = next(item for item in levels if item["level"] == 1)
+
+        self.assertEqual(vip0["daily_official_task_limit_label"], "无权限")
+        self.assertEqual(vip0["withdraw_fee_rate_label"], "20%")
+        self.assertEqual(vip1["daily_official_task_limit_label"], "1 次/天")
+        self.assertEqual(vip1["withdraw_fee_rate_label"], "10%")
 
 
 class TikTokApifyClientTests(SimpleTestCase):

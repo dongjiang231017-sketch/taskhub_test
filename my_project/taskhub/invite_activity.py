@@ -12,7 +12,10 @@ from .referral_config import get_referral_reward_rates
 
 def _pct(rate: Decimal) -> str:
     value = (Decimal(str(rate)) * Decimal("100")).normalize()
-    return f"{value}%"
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return f"{text or '0'}%"
 
 
 def _money(value: Decimal) -> str:
@@ -21,7 +24,12 @@ def _money(value: Decimal) -> str:
 
 def _membership_payload(level: MembershipLevelConfig) -> dict:
     limit = level.daily_official_task_limit
-    if level.unlimited_tasks or limit is None:
+    has_vip_task_access = bool(
+        level.unlimited_tasks or level.can_claim_official_tasks or level.can_claim_high_commission_tasks
+    )
+    if not has_vip_task_access:
+        limit_label = "无权限"
+    elif level.unlimited_tasks or limit is None:
         limit_label = "不限"
     else:
         limit_label = f"{limit} 次/天"
