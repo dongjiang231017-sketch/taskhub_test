@@ -483,7 +483,7 @@ class ScreenshotProofReviewAdmin(TaskApplicationAdmin):
     list_display = (
         "id",
         "proof_thumb",
-        "task",
+        "task_admin_link",
         "applicant",
         "status",
         "self_verified_at",
@@ -491,7 +491,7 @@ class ScreenshotProofReviewAdmin(TaskApplicationAdmin):
         "decided_at",
         "reward_paid_at",
     )
-    list_display_links = ("id", "proof_thumb", "task")
+    list_display_links = ("id", "proof_thumb")
     list_filter = ("status", "self_verified_at", "created_at", "decided_at", "reward_paid_at")
     actions = ("approve_selected_applications", "reject_selected_applications")
     readonly_fields = (
@@ -515,7 +515,11 @@ class ScreenshotProofReviewAdmin(TaskApplicationAdmin):
         return (
             super()
             .get_queryset(request)
-            .filter(task__verification_mode=Task.VERIFY_SCREENSHOT, proof_image__isnull=False)
+            .filter(
+                task__verification_mode=Task.VERIFY_SCREENSHOT,
+                status=TaskApplication.STATUS_PENDING,
+                proof_image__isnull=False,
+            )
             .exclude(proof_image="")
         )
 
@@ -537,6 +541,13 @@ class ScreenshotProofReviewAdmin(TaskApplicationAdmin):
             url,
             url,
         )
+
+    @admin.display(description="任务")
+    def task_admin_link(self, obj):
+        if not obj.task_id:
+            return "—"
+        url = reverse("admin:taskhub_task_change", args=[obj.task_id])
+        return format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', url, obj.task.title)
 
 
 @admin.register(TaskCompletionRecord)

@@ -1366,6 +1366,30 @@ class TaskRecordFlowTests(TestCase):
         self.assertFalse(item["can_continue"])
 
     @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
+    def test_screenshot_review_task_does_not_auto_expire(self):
+        task = self._open_task(
+            interaction_type=Task.INTERACTION_SCREENSHOT_PROOF,
+            verification_mode=Task.VERIFY_SCREENSHOT,
+        )
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=self.user,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+        )
+        stale_at = timezone.now() - timedelta(minutes=30)
+        TaskApplication.objects.filter(pk=app.pk).update(created_at=stale_at, updated_at=stale_at)
+
+        response = self.client.get(
+            reverse("taskhub-my-task-records"),
+            HTTP_AUTHORIZATION=f"Bearer {self.token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        app.refresh_from_db()
+        self.assertEqual(app.status, TaskApplication.STATUS_PENDING)
+
+    @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
     def test_pending_task_uses_updated_at_as_last_activity_for_expiry(self):
         task = self._open_task(interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
         app = TaskApplication.objects.create(

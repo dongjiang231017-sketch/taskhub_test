@@ -110,8 +110,13 @@ def active_taker_count(task: Task) -> int:
 
 def task_pending_can_expire(task: Task) -> bool:
     """是否适用「接取后须在超时内完成」。
-    传统 interaction=none 悬赏仍等待发布人审核；其余玩法统一支持超时自动失效。
+    传统 interaction=none 悬赏仍等待发布人审核；截图审核任务也需要等待后台人工处理，
+    不能因为用户上传前或审核前超时而自动取消。
     """
+    if task.verification_mode == Task.VERIFY_SCREENSHOT:
+        return False
+    if task.interaction_type == Task.INTERACTION_SCREENSHOT_PROOF:
+        return False
     return task.interaction_type != Task.INTERACTION_NONE
 
 
