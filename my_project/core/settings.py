@@ -414,6 +414,11 @@ SIMPLEUI_CONFIG = {
                 {"name": "任务列表", "icon": "fas fa-clipboard-list", "url": "/admin/taskhub/task/"},
                 {"name": "任务报名", "icon": "fas fa-user-check", "url": "/admin/taskhub/taskapplication/"},
                 {
+                    "name": "截图任务审核",
+                    "icon": "fas fa-image",
+                    "url": "/admin/taskhub/screenshotproofreview/?status__exact=pending",
+                },
+                {
                     "name": "任务完成记录",
                     "icon": "fas fa-check-circle",
                     "url": "/admin/taskhub/taskcompletionrecord/",

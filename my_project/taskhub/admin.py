@@ -2,6 +2,7 @@ import logging
 
 from django import forms
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -22,6 +23,7 @@ from .models import (
     MembershipLevelConfig,
     PlatformStatsDisplayConfig,
     ReferralRewardConfig,
+    ScreenshotProofReview,
     Task,
     TaskApplication,
     TaskCategory,
@@ -29,8 +31,46 @@ from .models import (
     TeamLeaderTier,
 )
 from .platform_publisher import get_task_platform_publisher, is_platform_publisher
+from .task_lifecycle import after_publisher_accepts_application, effective_applicants_limit, is_mandatory_no_slot_cap
+from .task_rewards import grant_task_completion_reward
 
 logger = logging.getLogger(__name__)
+
+
+def finalize_accepted_application(application: TaskApplication) -> dict:
+    """后台审核通过后，补齐名额收尾与钱包奖励发放。奖励函数本身按 reward_paid_at 防重复。"""
+    now = timezone.now()
+    with transaction.atomic():
+        app = TaskApplication.objects.select_for_update().select_related("task", "applicant").get(pk=application.pk)
+        if app.status != TaskApplication.STATUS_ACCEPTED:
+            app.status = TaskApplication.STATUS_ACCEPTED
+            app.decided_at = now
+            app.save(update_fields=["status", "decided_at", "updated_at"])
+        elif not app.decided_at:
+            app.decided_at = now
+            app.save(update_fields=["decided_at", "updated_at"])
+
+        task_ref = app.task
+        if not is_mandatory_no_slot_cap(task_ref) and effective_applicants_limit(task_ref) == 1:
+            TaskApplication.objects.filter(task=task_ref, status=TaskApplication.STATUS_PENDING).exclude(
+                pk=app.pk
+            ).update(status=TaskApplication.STATUS_REJECTED, decided_at=now)
+
+    after_publisher_accepts_application(task_ref)
+
+    with transaction.atomic():
+        app = TaskApplication.objects.select_for_update().select_related("task", "applicant").get(pk=application.pk)
+        if app.status != TaskApplication.STATUS_ACCEPTED:
+            return {"granted": False, "reason": "not_accepted", "usdt": "0", "th_coin": "0"}
+        return grant_task_completion_reward(app)
+
+
+def reject_applications(queryset) -> int:
+    now = timezone.now()
+    return queryset.exclude(status=TaskApplication.STATUS_ACCEPTED).update(
+        status=TaskApplication.STATUS_REJECTED,
+        decided_at=now,
+    )
 
 
 class TolerantDjangoAdminLogMixin:
@@ -313,7 +353,7 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "decided_at",
     )
     list_filter = ("status", "created_at")
-    actions = ("unbind_selected_binding_accounts",)
+    actions = ("approve_selected_applications", "reject_selected_applications", "unbind_selected_binding_accounts")
     search_fields = (
         "task__title",
         "applicant__username",
@@ -321,7 +361,7 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         "applicant__invite_code",
     )
     raw_id_fields = ("task", "applicant")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("proof_image_preview", "reward_paid_at", "created_at", "updated_at")
     fieldsets = (
         ("任务与用户", {"fields": ("task", "applicant")}),
         (
@@ -332,13 +372,29 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
                 "description": "纯必做任务可不看；有人接单报价时才用。",
             },
         ),
-        ("完成与凭证", {"fields": ("bound_username", "proof_image", "self_verified_at")}),
+        ("完成与凭证", {"fields": ("bound_username", "proof_image", "proof_image_preview", "self_verified_at", "reward_paid_at")}),
         ("系统", {"fields": ("created_at", "updated_at")}),
     )
 
     @admin.display(description="有截图", boolean=True)
     def has_proof(self, obj):
         return bool(obj.proof_image)
+
+    @admin.display(description="截图预览")
+    def proof_image_preview(self, obj):
+        if not obj.proof_image:
+            return "—"
+        try:
+            url = obj.proof_image.url
+        except Exception:
+            return "截图文件不可访问"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">'
+            '<img src="{}" style="max-width:360px;max-height:260px;border-radius:10px;border:1px solid #e5e7eb;" />'
+            "</a>",
+            url,
+            url,
+        )
 
     @admin.display(description="绑定账号")
     def bound_username_preview(self, obj):
@@ -352,6 +408,61 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
         rows = [{"platform": plat or "报名", "account": bu}]
         return binding_modal_trigger(rows, label="已绑定 · 查看")
 
+    def save_model(self, request, obj, form, change):
+        old = None
+        if change and obj.pk:
+            old = TaskApplication.objects.filter(pk=obj.pk).values("status", "reward_paid_at").first()
+        if obj.status in {TaskApplication.STATUS_REJECTED, TaskApplication.STATUS_CANCELLED} and not obj.decided_at:
+            obj.decided_at = timezone.now()
+        super().save_model(request, obj, form, change)
+        should_finalize = obj.status == TaskApplication.STATUS_ACCEPTED and (
+            old is None or old.get("status") != TaskApplication.STATUS_ACCEPTED or not old.get("reward_paid_at")
+        )
+        if should_finalize:
+            try:
+                result = finalize_accepted_application(obj)
+            except OperationalError as exc:
+                self.message_user(request, f"审核通过已保存，但奖励发放失败：{exc}", level=messages.ERROR)
+                return
+            if result.get("granted"):
+                self.message_user(
+                    request,
+                    f"已审核通过并发放奖励：USDT {result.get('usdt')} / TH {result.get('th_coin')}",
+                    level=messages.SUCCESS,
+                )
+            elif result.get("reason") == "already_paid":
+                self.message_user(request, "已审核通过；该报名奖励此前已发放，未重复发放。", level=messages.INFO)
+            elif result.get("reason") == "no_reward_configured":
+                self.message_user(request, "已审核通过；该任务未配置奖励金额，钱包无变动。", level=messages.WARNING)
+
+    @admin.action(description="审核通过并发放任务奖励")
+    def approve_selected_applications(self, request, queryset):
+        ok = 0
+        failed = 0
+        granted_usdt = []
+        granted_th = []
+        for app in queryset.select_related("task", "applicant"):
+            try:
+                result = finalize_accepted_application(app)
+                ok += 1
+                if result.get("granted"):
+                    granted_usdt.append(str(result.get("usdt", "0")))
+                    granted_th.append(str(result.get("th_coin", "0")))
+            except OperationalError:
+                failed += 1
+        msg = f"已审核通过 {ok} 条"
+        if granted_usdt or granted_th:
+            msg += "，并按任务配置发放奖励"
+        if failed:
+            self.message_user(request, f"{msg}；{failed} 条因系统繁忙失败，请稍后重试。", level=messages.ERROR)
+        else:
+            self.message_user(request, msg, level=messages.SUCCESS)
+
+    @admin.action(description="审核拒绝所选报名")
+    def reject_selected_applications(self, request, queryset):
+        count = reject_applications(queryset)
+        self.message_user(request, f"已拒绝 {count} 条报名。", level=messages.SUCCESS)
+
     @admin.action(description="解绑所选账号绑定记录")
     def unbind_selected_binding_accounts(self, request, queryset):
         count = queryset.filter(
@@ -363,6 +474,69 @@ class TaskApplicationAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             decided_at=timezone.now(),
         )
         self.message_user(request, f"已解绑 {count} 条账号绑定记录。")
+
+
+@admin.register(ScreenshotProofReview)
+class ScreenshotProofReviewAdmin(TaskApplicationAdmin):
+    """集中处理前台上传截图后的待审核任务。"""
+
+    list_display = (
+        "id",
+        "proof_thumb",
+        "task",
+        "applicant",
+        "status",
+        "self_verified_at",
+        "created_at",
+        "decided_at",
+        "reward_paid_at",
+    )
+    list_display_links = ("id", "proof_thumb", "task")
+    list_filter = ("status", "self_verified_at", "created_at", "decided_at", "reward_paid_at")
+    actions = ("approve_selected_applications", "reject_selected_applications")
+    readonly_fields = (
+        "task",
+        "applicant",
+        "proof_image",
+        "proof_image_preview",
+        "self_verified_at",
+        "reward_paid_at",
+        "created_at",
+        "updated_at",
+    )
+    fieldsets = (
+        ("审核对象", {"fields": ("task", "applicant", "status", "decided_at")}),
+        ("用户上传截图", {"fields": ("proof_image", "proof_image_preview", "self_verified_at")}),
+        ("奖励与备注", {"fields": ("reward_paid_at", "proposal", "quoted_price")}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .filter(task__verification_mode=Task.VERIFY_SCREENSHOT, proof_image__isnull=False)
+            .exclude(proof_image="")
+        )
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.display(description="截图")
+    def proof_thumb(self, obj):
+        if not obj.proof_image:
+            return "—"
+        try:
+            url = obj.proof_image.url
+        except Exception:
+            return "不可访问"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">'
+            '<img src="{}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" />'
+            "</a>",
+            url,
+            url,
+        )
 
 
 @admin.register(TaskCompletionRecord)

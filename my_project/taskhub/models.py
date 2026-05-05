@@ -431,6 +431,18 @@ class TaskCompletionRecord(TaskApplication):
         verbose_name_plural = verbose_name
 
 
+class ScreenshotProofReview(TaskApplication):
+    """
+    与 task_application 同表；后台「截图任务审核」仅展示已上传截图的截图审核任务，
+    方便运营集中处理用户提交的凭证。
+    """
+
+    class Meta:
+        proxy = True
+        verbose_name = "截图任务审核"
+        verbose_name_plural = verbose_name
+
+
 class CheckInConfig(models.Model):
     """全局签到规则（后台仅维护一条记录）。"""
 
