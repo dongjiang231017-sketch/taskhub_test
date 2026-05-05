@@ -558,8 +558,10 @@ class PlatformStatsDisplayConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAd
             {
                 "fields": (),
                 "description": (
-                    "首页排行榜顶部统计展示值 = <strong>真实统计</strong> + <strong>虚拟基础值</strong> + <strong>自动增长累计值</strong>。"
+                    "这里可以修改首页排行榜顶部 <strong>4 个统计项</strong> 的展示值：任务总数、总发放奖励、总用户数、运营天数。"
+                    "<br>前台展示值 = <strong>真实统计</strong> + <strong>虚拟基础值</strong> + <strong>自动增长累计值</strong>。"
                     "<br>自动增长累计值由计划任务 <code>python manage.py maintain_platform_stats</code> 按整小时随机累加。"
+                    "<br><strong>在线人数不在这里配置</strong>，它会按最近活跃用户实时统计。"
                 ),
             },
         ),
@@ -597,17 +599,6 @@ class PlatformStatsDisplayConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAd
             },
         ),
         (
-            "在线人数",
-            {
-                "fields": (
-                    "online_users_virtual_base",
-                    "online_users_hourly_growth_min",
-                    "online_users_hourly_growth_max",
-                    "online_users_virtual_auto_increment",
-                )
-            },
-        ),
-        (
             "运营天数",
             {
                 "fields": (
@@ -624,7 +615,6 @@ class PlatformStatsDisplayConfigAdmin(TolerantDjangoAdminLogMixin, admin.ModelAd
         "total_tasks_virtual_auto_increment",
         "total_rewards_usdt_virtual_auto_increment",
         "total_users_virtual_auto_increment",
-        "online_users_virtual_auto_increment",
         "operating_days_virtual_auto_increment",
         "virtual_growth_last_at",
         "updated_at",

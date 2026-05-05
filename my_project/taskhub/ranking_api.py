@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Count, Min, Q, Sum
@@ -137,6 +138,15 @@ def _platform_total_users() -> int:
     return FrontendUser.objects.filter(status=True).count()
 
 
+def _platform_online_users() -> int:
+    active_window_minutes = max(
+        1,
+        int(getattr(settings, "ONLINE_USERS_ACTIVE_WINDOW_MINUTES", 5) or 5),
+    )
+    cutoff = timezone.now() - timedelta(minutes=active_window_minutes)
+    return FrontendUser.objects.filter(status=True, last_seen_at__gte=cutoff).count()
+
+
 def _platform_stats_display_snapshot() -> dict:
     config = PlatformStatsDisplayConfig.get()
     total_tasks = _platform_total_tasks() + max(
@@ -150,10 +160,7 @@ def _platform_stats_display_snapshot() -> dict:
         0,
         int(config.total_users_virtual_auto_increment or 0),
     )
-    online_users = max(0, int(config.online_users_virtual_base or 0)) + max(
-        0,
-        int(config.online_users_virtual_auto_increment or 0),
-    )
+    online_users = _platform_online_users()
     operating_days = _platform_operating_days() + max(0, int(config.operating_days_virtual_base or 0)) + max(
         0,
         int(config.operating_days_virtual_auto_increment or 0),

@@ -34,6 +34,7 @@ from .api_views import (
     parse_json_body,
     require_api_login,
     serialize_user,
+    touch_frontend_user_last_seen,
 )
 
 logger = logging.getLogger(__name__)
@@ -462,6 +463,7 @@ def telegram_auth_api(request):
             try_bind_referrer_by_invite_code(user, raw_bind)
 
         token = ApiToken.issue_for_user(user)
+        touch_frontend_user_last_seen(user.id)
 
     user.refresh_from_db()
     payload_user = serialize_user(user)

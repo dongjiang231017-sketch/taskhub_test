@@ -60,6 +60,12 @@ class FrontendUser(models.Model):
     
     status = models.BooleanField(default=True, verbose_name="账号状态", db_comment="True为正常, False为拉黑封禁")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="注册时间", db_comment="用户注册的时间")
+    last_seen_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="最近活跃时间",
+        db_comment="用于统计前台实时在线人数的最近活跃时间",
+    )
 
     def save(self, *args, **kwargs):
         # 1. 自动生成邀请码

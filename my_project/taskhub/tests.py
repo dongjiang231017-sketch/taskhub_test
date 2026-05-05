@@ -266,7 +266,7 @@ class VirtualApplicationGrowthTests(TestCase):
 class PlatformStatsVirtualConfigTests(TestCase):
     @patch(
         "taskhub.task_lifecycle.random.randint",
-        side_effect=[2, 3, 4, 5, 1, 2, 0, 1, 5, 8],
+        side_effect=[2, 3, 4, 5, 0, 1, 5, 8],
     )
     def test_advance_virtual_platform_stats_applies_hourly_growth(self, mock_rand):
         config = PlatformStatsDisplayConfig.get()
@@ -276,8 +276,6 @@ class PlatformStatsVirtualConfigTests(TestCase):
         config.total_rewards_usdt_hourly_growth_max = Decimal("0.10")
         config.total_users_hourly_growth_min = 4
         config.total_users_hourly_growth_max = 8
-        config.online_users_hourly_growth_min = 1
-        config.online_users_hourly_growth_max = 2
         config.operating_days_hourly_growth_min = 0
         config.operating_days_hourly_growth_max = 2
         now = timezone.now()
@@ -290,8 +288,6 @@ class PlatformStatsVirtualConfigTests(TestCase):
                 "total_rewards_usdt_hourly_growth_max",
                 "total_users_hourly_growth_min",
                 "total_users_hourly_growth_max",
-                "online_users_hourly_growth_min",
-                "online_users_hourly_growth_max",
                 "operating_days_hourly_growth_min",
                 "operating_days_hourly_growth_max",
                 "virtual_growth_last_at",
@@ -306,19 +302,35 @@ class PlatformStatsVirtualConfigTests(TestCase):
         self.assertEqual(summary["added_total_tasks"], 5)
         self.assertEqual(summary["added_total_rewards_usdt"], Decimal("0.13"))
         self.assertEqual(summary["added_total_users"], 9)
-        self.assertEqual(summary["added_online_users"], 3)
         self.assertEqual(summary["added_operating_days"], 1)
         self.assertEqual(config.total_tasks_virtual_auto_increment, 5)
         self.assertEqual(config.total_rewards_usdt_virtual_auto_increment, Decimal("0.13"))
         self.assertEqual(config.total_users_virtual_auto_increment, 9)
-        self.assertEqual(config.online_users_virtual_auto_increment, 3)
         self.assertEqual(config.operating_days_virtual_auto_increment, 1)
         self.assertEqual(config.virtual_growth_last_at, now)
-        self.assertEqual(mock_rand.call_count, 10)
+        self.assertEqual(mock_rand.call_count, 8)
 
-    def test_rankings_platform_stats_api_includes_virtual_online_users(self):
-        FrontendUser.objects.create(username="rank_user_1", phone="13900001001", password="pass123456")
-        FrontendUser.objects.create(username="rank_user_2", phone="13900001002", password="pass123456")
+    @override_settings(ONLINE_USERS_ACTIVE_WINDOW_MINUTES=5)
+    def test_rankings_platform_stats_api_uses_realtime_online_users(self):
+        now = timezone.now()
+        FrontendUser.objects.create(
+            username="rank_user_1",
+            phone="13900001001",
+            password="pass123456",
+            last_seen_at=now - timedelta(minutes=1),
+        )
+        FrontendUser.objects.create(
+            username="rank_user_2",
+            phone="13900001002",
+            password="pass123456",
+            last_seen_at=now - timedelta(minutes=4, seconds=30),
+        )
+        FrontendUser.objects.create(
+            username="rank_user_3",
+            phone="13900001004",
+            password="pass123456",
+            last_seen_at=now - timedelta(minutes=9),
+        )
         publisher = FrontendUser.objects.create(username="rank_publisher", phone="13900001003", password="pass123456")
         Task.objects.create(
             publisher=publisher,
@@ -336,12 +348,10 @@ class PlatformStatsVirtualConfigTests(TestCase):
         config.total_tasks_virtual_base = 10
         config.total_rewards_usdt_virtual_base = Decimal("99.50")
         config.total_users_virtual_base = 20
-        config.online_users_virtual_base = 88
         config.operating_days_virtual_base = 5
         config.total_tasks_virtual_auto_increment = 3
         config.total_rewards_usdt_virtual_auto_increment = Decimal("1.25")
         config.total_users_virtual_auto_increment = 4
-        config.online_users_virtual_auto_increment = 7
         config.operating_days_virtual_auto_increment = 2
         config.save()
 
@@ -351,9 +361,24 @@ class PlatformStatsVirtualConfigTests(TestCase):
         payload = response.json()["data"]
         self.assertEqual(payload["total_tasks"], 15)
         self.assertEqual(payload["total_rewards_issued_usdt"], "100.75")
-        self.assertEqual(payload["total_users"], 27)
-        self.assertEqual(payload["online_users"], 95)
+        self.assertEqual(payload["total_users"], 28)
+        self.assertEqual(payload["online_users"], 2)
         self.assertGreaterEqual(payload["operating_days"], 8)
+
+    def test_me_ping_updates_last_seen_at(self):
+        user = FrontendUser.objects.create(username="ping_user", phone="13900001005", password="pass123456")
+        token = ApiToken.issue_for_user(user)
+
+        response = self.client.post(
+            reverse("taskhub-me-ping"),
+            data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertIsNotNone(user.last_seen_at)
 
 
 class TelegramWebhookStartTests(SimpleTestCase):

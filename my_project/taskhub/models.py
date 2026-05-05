@@ -545,7 +545,7 @@ class ReferralRewardConfig(models.Model):
 
 
 class PlatformStatsDisplayConfig(models.Model):
-    """排行页首页统计展示参数：真实值 + 虚拟基础值 + 每小时随机增长值。"""
+    """首页排行榜统计配置：4项统计支持虚拟叠加，在线人数走实时活跃。"""
 
     total_tasks_virtual_base = models.PositiveIntegerField(
         default=0,
@@ -624,28 +624,6 @@ class PlatformStatsDisplayConfig(models.Model):
         db_comment="系统按小时累计增长的总用户数虚拟值",
     )
 
-    online_users_virtual_base = models.PositiveIntegerField(
-        default=0,
-        verbose_name="在线人数虚拟基础值",
-        db_comment="排行页在线人数为纯展示字段，取基础值叠加自动增长值",
-    )
-    online_users_hourly_growth_min = models.PositiveIntegerField(
-        default=0,
-        verbose_name="在线人数每小时增长最小值",
-        db_comment="每整小时随机增加的最小在线人数虚拟值",
-    )
-    online_users_hourly_growth_max = models.PositiveIntegerField(
-        default=0,
-        verbose_name="在线人数每小时增长最大值",
-        db_comment="每整小时随机增加的最大在线人数虚拟值",
-    )
-    online_users_virtual_auto_increment = models.PositiveIntegerField(
-        default=0,
-        editable=False,
-        verbose_name="在线人数自动增长累计值",
-        db_comment="系统按小时累计增长的在线人数虚拟值",
-    )
-
     operating_days_virtual_base = models.PositiveIntegerField(
         default=0,
         verbose_name="运营天数虚拟基础值",
@@ -679,11 +657,11 @@ class PlatformStatsDisplayConfig(models.Model):
 
     class Meta:
         db_table = "task_platform_stats_display_config"
-        verbose_name = "首页统计虚拟参数"
+        verbose_name = "首页排行榜统计配置"
         verbose_name_plural = verbose_name
 
     def __str__(self):
-        return "首页统计虚拟参数"
+        return "首页排行榜统计配置"
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -693,7 +671,6 @@ class PlatformStatsDisplayConfig(models.Model):
             ("total_tasks_hourly_growth_min", "total_tasks_hourly_growth_max", "任务总数"),
             ("total_rewards_usdt_hourly_growth_min", "total_rewards_usdt_hourly_growth_max", "总发放奖励"),
             ("total_users_hourly_growth_min", "total_users_hourly_growth_max", "总用户数"),
-            ("online_users_hourly_growth_min", "online_users_hourly_growth_max", "在线人数"),
             ("operating_days_hourly_growth_min", "operating_days_hourly_growth_max", "运营天数"),
         )
         errors = {}

@@ -137,6 +137,12 @@ def get_bearer_token(request):
     return token or None
 
 
+def touch_frontend_user_last_seen(user_id, *, seen_at=None):
+    if not user_id:
+        return
+    FrontendUser.objects.filter(pk=user_id).update(last_seen_at=seen_at or timezone.now())
+
+
 def resolve_user_by_token(token_value):
     if not token_value:
         return None, None
@@ -146,7 +152,10 @@ def resolve_user_by_token(token_value):
         return None, None
     now = timezone.now()
     ApiToken.objects.filter(pk=token.pk).update(last_used_at=now)
+    touch_frontend_user_last_seen(token.user_id, seen_at=now)
     token.last_used_at = now
+    if getattr(token, "user", None) is not None:
+        token.user.last_seen_at = now
     return token.user, token
 
 
@@ -182,6 +191,15 @@ def require_api_login(view_func):
         return view_func(request, *args, **kwargs)
 
     return wrapper
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["POST"])
+def me_ping_api(request):
+    now = timezone.now()
+    touch_frontend_user_last_seen(request.api_user.id, seen_at=now)
+    return api_response({"server_time": now.isoformat()})
 
 
 def serialize_user(user):

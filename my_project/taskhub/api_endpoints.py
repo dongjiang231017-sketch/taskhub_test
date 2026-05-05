@@ -98,6 +98,7 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         False,
     ),
     PublicEndpoint(("POST",), "auth/logout/", "退出登录", True),
+    PublicEndpoint(("POST",), "me/ping/", "前台在线心跳：刷新最近活跃时间，供实时在线人数统计", True),
     PublicEndpoint(("GET",), "me/home/", "首页聚合（用户/钱包/累计收益/签到周历）", True),
     PublicEndpoint(("GET",), "me/center/", "个人中心聚合（等级/排名/最近收益/提现规则/外链/含 check_in）", True),
     PublicEndpoint(("GET",), "me/rewards/ledger/", "收益与账单明细（钱包账变分页；summary 为累计入账）", True),

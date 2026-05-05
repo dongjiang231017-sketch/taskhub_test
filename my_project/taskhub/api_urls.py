@@ -31,6 +31,7 @@ urlpatterns = [
         name="taskhub-telegram-bot-webhook",
     ),
     path("auth/logout/", api_views.logout_api, name="taskhub-logout"),
+    path("me/ping/", api_views.me_ping_api, name="taskhub-me-ping"),
     path("me/home/", miniapp_api.my_home_api, name="taskhub-me-home"),
     path("me/center/", profile_center_api.me_center_api, name="taskhub-me-center"),
     path("me/rewards/ledger/", profile_center_api.me_rewards_ledger_api, name="taskhub-me-rewards-ledger"),

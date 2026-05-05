@@ -305,7 +305,6 @@ def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
         "added_total_tasks": int,
         "added_total_rewards_usdt": Decimal,
         "added_total_users": int,
-        "added_online_users": int,
         "added_operating_days": int,
     }
     """
@@ -319,7 +318,6 @@ def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
         "added_total_tasks": 0,
         "added_total_rewards_usdt": Decimal("0.00"),
         "added_total_users": 0,
-        "added_online_users": 0,
         "added_operating_days": 0,
     }
     if elapsed_hours <= 0:
@@ -337,12 +335,6 @@ def advance_virtual_platform_stats(*, now=None) -> dict[str, object]:
             "total_users_hourly_growth_min",
             "total_users_hourly_growth_max",
             "total_users_virtual_auto_increment",
-        ),
-        (
-            "added_online_users",
-            "online_users_hourly_growth_min",
-            "online_users_hourly_growth_max",
-            "online_users_virtual_auto_increment",
         ),
         (
             "added_operating_days",
