@@ -1069,6 +1069,16 @@ def _task_application_payable_reward_q() -> Q:
     )
 
 
+TASK_RECORD_USER_CONTINUE_INTERACTIONS = (
+    Task.INTERACTION_JOIN_COMMUNITY,
+    Task.INTERACTION_ACCOUNT_BINDING,
+    Task.INTERACTION_FOLLOW,
+    Task.INTERACTION_REPOST,
+    Task.INTERACTION_LIKE,
+    Task.INTERACTION_COMMENT,
+)
+
+
 def _task_applications_queryset_for_record_tabs(user):
     open_tasks = Q(task__status__in=(Task.STATUS_OPEN, Task.STATUS_IN_PROGRESS))
     pay = _task_application_payable_reward_q()
@@ -1101,6 +1111,12 @@ def _task_applications_queryset_for_record_tabs(user):
                     & open_tasks
                     & Q(task__verification_mode=Task.VERIFY_SCREENSHOT)
                     & ~proof_ready,
+                    then=Value(RECORD_STATUS_IN_PROGRESS),
+                ),
+                When(
+                    Q(status=TaskApplication.STATUS_PENDING)
+                    & open_tasks
+                    & Q(task__interaction_type__in=TASK_RECORD_USER_CONTINUE_INTERACTIONS),
                     then=Value(RECORD_STATUS_IN_PROGRESS),
                 ),
                 When(
@@ -1160,18 +1176,11 @@ def _task_record_reward_strings(task: Task) -> dict:
 
 
 def _task_record_can_continue(app: TaskApplication) -> bool:
-    if app.record_status in {RECORD_STATUS_COMPLETED, RECORD_STATUS_INVALID}:
+    if app.record_status != RECORD_STATUS_IN_PROGRESS:
         return False
     if app.status != TaskApplication.STATUS_PENDING:
         return False
-    if app.task.interaction_type in {
-        Task.INTERACTION_JOIN_COMMUNITY,
-        Task.INTERACTION_ACCOUNT_BINDING,
-        Task.INTERACTION_FOLLOW,
-        Task.INTERACTION_REPOST,
-        Task.INTERACTION_LIKE,
-        Task.INTERACTION_COMMENT,
-    }:
+    if app.task.interaction_type in TASK_RECORD_USER_CONTINUE_INTERACTIONS:
         return True
     return bool(binding_verify_action(app.task) or interaction_verify_action(app.task))
 

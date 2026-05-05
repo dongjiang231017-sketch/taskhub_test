@@ -1322,7 +1322,7 @@ class TaskRecordFlowTests(TestCase):
             verification_mode=verification_mode,
         )
 
-    def test_pending_join_task_record_can_continue(self):
+    def test_pending_join_task_record_is_in_progress_and_can_continue(self):
         task = self._open_task(interaction_type=Task.INTERACTION_JOIN_COMMUNITY)
         TaskApplication.objects.create(
             task=task,
@@ -1338,7 +1338,7 @@ class TaskRecordFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         item = response.json()["data"]["items"][0]
-        self.assertEqual(item["record_status"], "under_review")
+        self.assertEqual(item["record_status"], "in_progress")
         self.assertTrue(item["can_continue"])
 
     @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
@@ -1388,6 +1388,31 @@ class TaskRecordFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         app.refresh_from_db()
         self.assertEqual(app.status, TaskApplication.STATUS_PENDING)
+
+    def test_submitted_screenshot_review_record_cannot_continue(self):
+        task = self._open_task(
+            interaction_type=Task.INTERACTION_SCREENSHOT_PROOF,
+            verification_mode=Task.VERIFY_SCREENSHOT,
+        )
+        app = TaskApplication.objects.create(
+            task=task,
+            applicant=self.user,
+            status=TaskApplication.STATUS_PENDING,
+            quoted_price="0.00",
+            proof_image="task_proofs/submitted.png",
+            self_verified_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse("taskhub-my-task-records"),
+            HTTP_AUTHORIZATION=f"Bearer {self.token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["data"]["items"][0]
+        self.assertEqual(item["id"], app.id)
+        self.assertEqual(item["record_status"], "under_review")
+        self.assertFalse(item["can_continue"])
 
     @override_settings(TASK_PENDING_APPLICATION_TIMEOUT_MINUTES=5)
     def test_pending_task_uses_updated_at_as_last_activity_for_expiry(self):

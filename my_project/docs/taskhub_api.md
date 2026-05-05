@@ -1149,8 +1149,8 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 
 - **已失效**：报名为 `rejected` / `cancelled`；或 **`pending`** 但任务已非「可继续」状态（任务非 `open` / `in_progress`）；或 **`accepted`**、仍有应付展示奖励、尚未 `reward_paid_at`、且任务为 `closed` / `draft`。
 - **已完成**：**`accepted`** 且（已写入 **`reward_paid_at`**，或任务未配置正数 **`reward_usdt` / `reward_th_coin`**，视为无需发奖即完结）。
-- **审核中**：**`pending`** 且任务仍为 `open` / `in_progress`（待发布人处理报名）；或 **`accepted`**、校验方式为 **上传截图待审核**、已上传 **`proof_image`**、仍有应付奖励且尚未入账。
-- **进行中**：其余 **`accepted`** 且未归入上两类的情况（例如已录用待用户完成 / 待自动校验等）。
+- **审核中**：**`pending`** 且任务仍为 `open` / `in_progress` 但已进入平台/后台审核（例如上传截图任务已提交 `proof_image` 后等待审核）；或 **`accepted`**、校验方式为 **上传截图待审核**、已上传 **`proof_image`**、仍有应付奖励且尚未入账。
+- **进行中**：用户仍可继续完成/校验的记录（例如加入社群、绑定账号、关注/转发/点赞/评论等自动校验任务的 `pending`；或上传截图任务尚未提交凭证）；以及其余 **`accepted`** 且未归入上两类的情况。
 
 若传非法 `record_status`，返回 **HTTP 400**，`code=4070`。
 
@@ -1174,6 +1174,7 @@ curl -sS -X POST -H "Authorization: Bearer <token>" \
 | `record_status_display` | 中文：`进行中` / `审核中` / `已完成` / `已失效` |
 | `rewards` | `{"usdt": "+0.022 USDT" \| null, "th_coin": "+0.10 TH" \| null}`，与任务上展示奖励一致；无则对应键为 `null` |
 | `time` | `label`（`更新时间` / `提交时间` / `完成时间`）、`at`（ISO8601）、`display`（`YYYY-MM-DD HH:mm`，服务器 `TIME_ZONE`） |
+| `can_continue` | 仅 `record_status=in_progress` 且用户仍可继续校验/上传时为 `true`；`under_review` / `completed` / `invalid` 均为 `false` |
 
 ## 7. 新手指南 API
 
