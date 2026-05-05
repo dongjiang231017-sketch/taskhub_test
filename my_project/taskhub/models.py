@@ -1150,3 +1150,65 @@ class ApiToken(models.Model):
         token.last_used_at = timezone.now()
         token.save(update_fields=["last_used_at"])
         return token
+
+
+class OnlineFeedback(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_REPLIED = "replied"
+    STATUS_CLOSED = "closed"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "待回复"),
+        (STATUS_REPLIED, "已回复"),
+        (STATUS_CLOSED, "已关闭"),
+    )
+
+    user = models.ForeignKey(
+        FrontendUser,
+        on_delete=models.CASCADE,
+        related_name="online_feedbacks",
+        verbose_name="反馈用户",
+        db_comment="提交反馈的前台用户",
+    )
+    title = models.CharField(max_length=120, verbose_name="反馈标题", db_comment="用户填写的反馈标题")
+    content = models.TextField(verbose_name="反馈内容", db_comment="用户填写的反馈详细内容")
+    contact = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        verbose_name="联系方式",
+        db_comment="用户可选填写的联系方式",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        verbose_name="处理状态",
+        db_comment="反馈处理状态",
+    )
+    admin_reply = models.TextField(blank=True, default="", verbose_name="后台回复", db_comment="后台给用户的回复内容")
+    replied_by = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        verbose_name="回复人",
+        db_comment="后台回复人的显示名",
+    )
+    replied_at = models.DateTimeField(blank=True, null=True, verbose_name="回复时间", db_comment="后台回复时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="提交时间", db_comment="反馈提交时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间", db_comment="最后更新时间")
+
+    class Meta:
+        db_table = "task_online_feedback"
+        verbose_name = "在线反馈"
+        verbose_name_plural = verbose_name
+        ordering = ("-updated_at", "-id")
+
+    def __str__(self):
+        return f"{self.user}：{self.title}"
+
+    def save(self, *args, **kwargs):
+        if self.admin_reply.strip() and not self.replied_at:
+            self.replied_at = timezone.now()
+        if self.admin_reply.strip() and self.status == self.STATUS_PENDING:
+            self.status = self.STATUS_REPLIED
+        super().save(*args, **kwargs)

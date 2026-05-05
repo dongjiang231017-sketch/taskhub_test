@@ -21,6 +21,7 @@ from .models import (
     InviteAchievementClaim,
     InviteAchievementTier,
     MembershipLevelConfig,
+    OnlineFeedback,
     PlatformStatsDisplayConfig,
     ReferralRewardConfig,
     ScreenshotProofReview,
@@ -1060,6 +1061,26 @@ class DailyTaskDayClaimAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
     raw_id_fields = ("user",)
     readonly_fields = ("claimed_at",)
     ordering = ("-on_date", "-id")
+
+
+@admin.register(OnlineFeedback)
+class OnlineFeedbackAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
+    list_display = ("id", "user", "title", "status", "created_at", "replied_at")
+    list_filter = ("status", "created_at", "replied_at")
+    search_fields = ("user__username", "user__phone", "user__telegram_id", "title", "content", "admin_reply")
+    raw_id_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at", "replied_at")
+    ordering = ("-updated_at", "-id")
+    fieldsets = (
+        ("用户反馈", {"fields": ("user", "title", "content", "contact", "status")}),
+        ("后台回复", {"fields": ("admin_reply", "replied_by", "replied_at")}),
+        ("系统", {"fields": ("created_at", "updated_at")}),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if obj.admin_reply.strip() and not obj.replied_by:
+            obj.replied_by = getattr(request.user, "username", "") or "admin"
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(ApiToken)

@@ -115,6 +115,12 @@ PUBLIC_ENDPOINTS: tuple[PublicEndpoint, ...] = (
         True,
     ),
     PublicEndpoint(
+        ("GET", "POST"),
+        "me/feedback/",
+        "在线反馈：GET 查看本人反馈与后台回复；POST 提交反馈",
+        True,
+    ),
+    PublicEndpoint(
         ("POST",),
         "me/membership/purchase/",
         "购买/升级会员等级：body.level；从钱包 USDT 扣除后台配置的加入费用",

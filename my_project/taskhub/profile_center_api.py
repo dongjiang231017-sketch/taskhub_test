@@ -31,7 +31,7 @@ from .api_views import (
     serialize_user,
 )
 from .miniapp_api import _check_in_week_payload, _stats_for_user
-from .models import MembershipLevelConfig, Task, TaskApplication
+from .models import MembershipLevelConfig, OnlineFeedback, Task, TaskApplication
 from .referral_rewards import grant_membership_purchase_referral_rewards
 
 _MONEY_QUANT = Decimal("0.01")
@@ -329,6 +329,22 @@ def _serialize_recharge_request(req: RechargeRequest) -> dict:
         "created_at": req.created_at.isoformat(),
         "updated_at": req.updated_at.isoformat(),
         "reviewed_at": req.reviewed_at.isoformat() if req.reviewed_at else None,
+    }
+
+
+def _serialize_feedback(item: OnlineFeedback) -> dict:
+    return {
+        "id": item.id,
+        "title": item.title,
+        "content": item.content,
+        "contact": item.contact,
+        "status": item.status,
+        "status_display": item.get_status_display(),
+        "admin_reply": item.admin_reply,
+        "replied_by": item.replied_by,
+        "replied_at": item.replied_at.isoformat() if item.replied_at else None,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
     }
 
 
@@ -789,6 +805,55 @@ def me_bound_accounts_api(request):
         )
 
     return api_response({"items": rows})
+
+
+@csrf_exempt
+@require_api_login
+@require_http_methods(["GET", "POST"])
+def me_feedback_api(request):
+    """在线反馈：前台提交反馈并查看后台回复。"""
+    user = request.api_user
+
+    if request.method == "GET":
+        try:
+            page = parse_positive_int(request.GET.get("page", 1), "page", minimum=1)
+            page_size = parse_positive_int(request.GET.get("page_size", 20), "page_size", minimum=1)
+        except ValueError as exc:
+            return api_error(str(exc), code=4001, status=400)
+        page_size = min(page_size, 50)
+        qs = OnlineFeedback.objects.filter(user=user).order_by("-updated_at", "-id")
+        total = qs.count()
+        offset = (page - 1) * page_size
+        rows = list(qs[offset : offset + page_size])
+        return api_response(
+            {
+                "items": [_serialize_feedback(item) for item in rows],
+                "pagination": {"page": page, "page_size": page_size, "total": total},
+            }
+        )
+
+    try:
+        body = parse_json_body(request)
+    except ValueError as exc:
+        return api_error(str(exc), code=4001, status=400)
+
+    title = (body.get("title") or "").strip()
+    content = (body.get("content") or "").strip()
+    contact = (body.get("contact") or "").strip()
+
+    if not content:
+        return api_error("反馈内容不能为空", code=4301, status=400)
+    if len(content) > 2000:
+        return api_error("反馈内容不能超过 2000 字", code=4302, status=400)
+    if not title:
+        title = content[:30] or "在线反馈"
+    if len(title) > 120:
+        return api_error("反馈标题不能超过 120 字", code=4303, status=400)
+    if len(contact) > 120:
+        return api_error("联系方式不能超过 120 字", code=4304, status=400)
+
+    item = OnlineFeedback.objects.create(user=user, title=title, content=content, contact=contact)
+    return api_response({"item": _serialize_feedback(item)}, message="反馈已提交")
 
 
 @csrf_exempt

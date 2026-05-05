@@ -26,6 +26,7 @@ from django.test import SimpleTestCase
 from taskhub.models import (
     ApiToken,
     MembershipLevelConfig,
+    OnlineFeedback,
     PlatformStatsDisplayConfig,
     ReferralRewardConfig,
     Task,
@@ -103,6 +104,48 @@ class InviteActivityRulesTests(TestCase):
         self.assertEqual(vip0["withdraw_fee_rate_label"], "20%")
         self.assertEqual(vip1["daily_official_task_limit_label"], "1 次/天")
         self.assertEqual(vip1["withdraw_fee_rate_label"], "10%")
+
+
+class OnlineFeedbackApiTests(TestCase):
+    def test_user_can_submit_feedback_and_read_admin_reply(self):
+        user = FrontendUser.objects.create(username="feedback_user", phone="13800000901", password="pass123456")
+        other = FrontendUser.objects.create(username="feedback_other", phone="13800000902", password="pass123456")
+        token = ApiToken.issue_for_user(user)
+        other_token = ApiToken.issue_for_user(other)
+
+        response = self.client.post(
+            reverse("taskhub-me-feedback"),
+            data={"title": "提现问题", "content": "提现一直没有到账", "contact": "@feedback_user"},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item_id = response.json()["data"]["item"]["id"]
+        feedback = OnlineFeedback.objects.get(pk=item_id)
+        self.assertEqual(feedback.user, user)
+        self.assertEqual(feedback.status, OnlineFeedback.STATUS_PENDING)
+
+        feedback.admin_reply = "已帮你核实，提现正在处理中。"
+        feedback.save()
+
+        list_response = self.client.get(
+            reverse("taskhub-me-feedback"),
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+        self.assertEqual(list_response.status_code, 200)
+        items = list_response.json()["data"]["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["status"], OnlineFeedback.STATUS_REPLIED)
+        self.assertEqual(items[0]["admin_reply"], "已帮你核实，提现正在处理中。")
+        self.assertIsNotNone(items[0]["replied_at"])
+
+        other_response = self.client.get(
+            reverse("taskhub-me-feedback"),
+            HTTP_AUTHORIZATION=f"Bearer {other_token.key}",
+        )
+        self.assertEqual(other_response.status_code, 200)
+        self.assertEqual(other_response.json()["data"]["items"], [])
 
 
 class TikTokApifyClientTests(SimpleTestCase):

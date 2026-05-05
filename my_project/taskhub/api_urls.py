@@ -37,6 +37,7 @@ urlpatterns = [
     path("me/rewards/ledger/", profile_center_api.me_rewards_ledger_api, name="taskhub-me-rewards-ledger"),
     path("me/recharges/", profile_center_api.me_recharges_api, name="taskhub-me-recharges"),
     path("me/withdrawals/", profile_center_api.me_withdrawals_api, name="taskhub-me-withdrawals"),
+    path("me/feedback/", profile_center_api.me_feedback_api, name="taskhub-me-feedback"),
     path(
         "me/membership/purchase/",
         profile_center_api.me_membership_purchase_api,
