@@ -978,14 +978,22 @@ class RechargeAndMembershipTests(TestCase):
         wallet.refresh_from_db()
         self.assertEqual(user.membership_level, 2)
         self.assertEqual(str(wallet.balance), "30.00")
-        self.assertTrue(
-            Transaction.objects.filter(
-                wallet=wallet,
-                change_type="cost",
-                asset=Transaction.ASSET_USDT,
-                amount="-50.00",
-            ).exists()
+        tx = Transaction.objects.get(
+            wallet=wallet,
+            change_type="cost",
+            asset=Transaction.ASSET_USDT,
+            amount="-50.00",
         )
+        self.assertEqual(tx.remark, "升级 VIP2")
+
+        ledger_response = self.client.get(
+            reverse("taskhub-me-rewards-ledger"),
+            HTTP_AUTHORIZATION=f"Bearer {token.key}",
+        )
+        self.assertEqual(ledger_response.status_code, 200)
+        ledger_items = ledger_response.json()["data"]["items"]
+        self.assertEqual(ledger_items[0]["label"], "消费")
+        self.assertEqual(ledger_items[0]["detail"], "升级 VIP2")
 
     def test_membership_purchase_grants_two_level_rebate_with_burn_cap(self):
         grandparent = FrontendUser.objects.create(

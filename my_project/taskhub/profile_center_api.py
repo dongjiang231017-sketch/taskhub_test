@@ -95,6 +95,35 @@ def _ledger_label(tx: Transaction) -> str:
     return _LEDGER_LABELS.get(tx.change_type, tx.get_change_type_display())
 
 
+def _strip_asset_suffix(text: str) -> str:
+    return re.sub(r"(?:[·（(]\s*)?(?:USDT|TH\s*Coin)\s*[）)]?$", "", text, flags=re.IGNORECASE).strip()
+
+
+def _ledger_detail(tx: Transaction) -> str:
+    """面向前端展示的账变原因，避免只显示「消费/奖励」这类过粗的类型。"""
+    remark = (tx.remark or "").strip()
+    if not remark:
+        return _ledger_label(tx)
+
+    membership = re.match(r"^(?:购买|开通|升级)?会员等级\s*(VIP\s*\d+|.+)$", remark, flags=re.IGNORECASE)
+    if membership:
+        return f"升级 {membership.group(1).strip()}"
+
+    upgraded = re.match(r"^升级\s*(VIP\s*\d+|.+)$", remark, flags=re.IGNORECASE)
+    if upgraded:
+        return f"升级 {upgraded.group(1).strip()}"
+
+    task_reward = re.match(r"^任务奖励\s*(?:USDT|TH\s*Coin)[：:]\s*(.+)$", remark, flags=re.IGNORECASE)
+    if task_reward:
+        return f"完成任务：{task_reward.group(1).strip()}"
+
+    checkin = re.match(r"^(每日签到|补签奖励|补签消耗)[：:]\s*(?:USDT|TH\s*Coin)$", remark, flags=re.IGNORECASE)
+    if checkin:
+        return checkin.group(1)
+
+    return _strip_asset_suffix(remark)
+
+
 def _rank_position(user: FrontendUser, completed_tasks: int) -> int:
     """按「已录用任务数」排名：人数严格多于当前用户 completed_tasks 的用户数 + 1。"""
     higher = (
@@ -137,6 +166,7 @@ def _serialize_ledger_row(tx: Transaction) -> dict:
         "amount_display": _format_amount_for_display(tx),
         "change_type": tx.change_type,
         "label": _ledger_label(tx),
+        "detail": _ledger_detail(tx),
         "remark": tx.remark or "",
         "created_at": tx.created_at.isoformat(),
     }
@@ -647,7 +677,7 @@ def me_membership_purchase_api(request):
                 before_balance=old_balance,
                 after_balance=new_balance,
                 change_type="cost",
-                remark=f"购买会员等级 {level_config.name}"[:250],
+                remark=f"升级 {level_config.name}"[:250],
             )
             wallet.balance = new_balance
             wallet.save(create_transaction=False)
