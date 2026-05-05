@@ -1082,6 +1082,18 @@ class OnlineFeedbackAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
             obj.replied_by = getattr(request.user, "username", "") or "admin"
         super().save_model(request, obj, form, change)
 
+    def has_module_permission(self, request):
+        return bool(request.user and request.user.is_active and request.user.is_staff)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user and request.user.is_active and request.user.is_staff)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user and request.user.is_active and request.user.is_staff)
+
+    def has_add_permission(self, request):
+        return bool(request.user and request.user.is_active and request.user.is_staff)
+
 
 @admin.register(ApiToken)
 class ApiTokenAdmin(TolerantDjangoAdminLogMixin, admin.ModelAdmin):
