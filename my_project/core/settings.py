@@ -505,6 +505,36 @@ try:
 except ImportError:
     pass
 
+
+def _ensure_simpleui_menu_item(group_name, item):
+    """Keep required admin links visible even when local_settings overrides menus."""
+    try:
+        menu_display = SIMPLEUI_CONFIG.setdefault("menu_display", [])
+        if group_name not in menu_display:
+            menu_display.append(group_name)
+        menus = SIMPLEUI_CONFIG.setdefault("menus", [])
+    except NameError:
+        return
+
+    group = next((menu for menu in menus if menu.get("name") == group_name), None)
+    if group is None:
+        group = {"name": group_name, "icon": "fas fa-folder", "models": []}
+        menus.append(group)
+
+    models = group.setdefault("models", [])
+    if not any(model.get("name") == item["name"] or model.get("url") == item["url"] for model in models):
+        models.append(item)
+
+
+_ensure_simpleui_menu_item(
+    "内容中心",
+    {
+        "name": "在线反馈",
+        "icon": "fas fa-headset",
+        "url": "/admin/taskhub/onlinefeedback/",
+    },
+)
+
 # 追加域名（逗号分隔），无需改 local_settings.py；Supervisor / 宝塔「环境变量」里设 ALLOWED_HOSTS_EXTRA 即可
 _extra_hosts = os.environ.get("ALLOWED_HOSTS_EXTRA", "").strip()
 if _extra_hosts:
