@@ -416,7 +416,7 @@ SIMPLEUI_CONFIG = {
                 {
                     "name": "截图任务审核",
                     "icon": "fas fa-image",
-                    "url": "/admin/taskhub/screenshotproofreview/?status__exact=pending",
+                    "url": "/admin/taskhub/screenshotproofreview/",
                 },
                 {
                     "name": "任务完成记录",
